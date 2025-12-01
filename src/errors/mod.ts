@@ -28,6 +28,8 @@ export enum ErrorCode {
   MISSING_AUTH_METHOD = 'MISSING_AUTH_METHOD',
   /** General configuration error */
   CONFIGURATION_ERROR = 'CONFIGURATION_ERROR',
+  /** Query execution failed */
+  QUERY_FAILED = 'QUERY_FAILED',
   /** Unknown error */
   UNKNOWN_ERROR = 'UNKNOWN_ERROR'
 }
@@ -208,6 +210,29 @@ export class ConfigurationError extends CosmosDBError {
       code: ErrorCode.CONFIGURATION_ERROR,
       severity: 'medium',
       retryable: false,
+    });
+  }
+}
+
+/**
+ * Error thrown when a query execution fails
+ *
+ * Thrown when CosmosDB query operations fail, such as document sampling.
+ * Query failures may be transient (e.g., network issues, throttling).
+ *
+ * @example
+ * ```ts
+ * throw new QueryFailedError('Failed to sample documents', context);
+ * ```
+ */
+export class QueryFailedError extends CosmosDBError {
+  constructor(message: string, context: CosmosDBErrorContext) {
+    super({
+      message,
+      context,
+      code: ErrorCode.QUERY_FAILED,
+      severity: 'high',
+      retryable: true,
     });
   }
 }
