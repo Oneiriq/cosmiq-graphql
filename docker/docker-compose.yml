@@ -45,7 +45,7 @@ services:
     image: cosmos-emulator
     build:
       context: dockerfiles
-      dockerfile: az_cosmosdb.dockerfile
+      dockerfile: azure_cosmosdb.dockerfile
     ports:
       - "8081:8081"
       - "10250-10255:10250-10255"
