@@ -2,7 +2,7 @@ import { assertEquals, assertRejects } from '@std/assert'
 import type { Container } from '@azure/cosmos'
 import { sampleDocuments } from '../../src/handler/document-sampler.ts'
 import type { CosmosDBDocument } from '../../src/types/cosmosdb.ts'
-import { QueryFailedError } from '../../src/errors/mod.ts'
+import { createErrorContext, QueryFailedError } from '../../src/errors/mod.ts'
 
 Deno.test('sampleDocuments - successful retrieval', async () => {
   const mockDocuments: CosmosDBDocument[] = [
@@ -31,7 +31,13 @@ Deno.test('sampleDocuments - error handling', async () => {
     items: {
       query: () => ({
         fetchAll: async () => {
-          throw new Error('Connection timeout')
+          throw new QueryFailedError(
+            'Request timeout',
+            createErrorContext({
+              component: 'cosmosdb-client',
+              metadata: { statusCode: 408 },
+            }),
+          )
         },
       }),
     },
@@ -44,7 +50,7 @@ Deno.test('sampleDocuments - error handling', async () => {
         sampleSize: 10,
       }),
     QueryFailedError,
-    'Failed to sample documents from container: Connection timeout',
+    'Failed to sample documents from container: Request timeout',
   )
 })
 

@@ -6,6 +6,9 @@
 
 import type { PrimitiveType } from './cosmosdb.ts'
 
+// Re-export PrimitiveType for use in infer modules
+export type { PrimitiveType } from './cosmosdb.ts'
+
 /**
  * Sampling configuration for document retrieval
  */
@@ -176,6 +179,34 @@ export type SchemaInferenceResult = {
     /** Fields with type conflicts */
     conflictedFields: string[]
   }
+}
+
+/**
+ * Inference statistics for schema generation
+ */
+export type InferenceStats = {
+  /** Total number of documents analyzed */
+  totalDocuments: number
+  /** Number of fields analyzed across all documents */
+  fieldsAnalyzed: number
+  /** Total number of types generated (root + nested) */
+  typesGenerated: number
+  /** Number of type conflicts that were resolved */
+  conflictsResolved: number
+  /** Number of nested types created */
+  nestedTypesCreated: number
+}
+
+/**
+ * Result of schema inference process
+ */
+export type InferredSchema = {
+  /** Root GraphQL type definition */
+  rootType: GraphQLTypeDef
+  /** All nested type definitions */
+  nestedTypes: GraphQLTypeDef[]
+  /** Statistics about the inference process */
+  stats: InferenceStats
 }
 
 /**

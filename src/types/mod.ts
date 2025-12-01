@@ -15,6 +15,8 @@ export type {
   GraphQLFieldDef,
   GraphQLTypeDef,
   InferenceContext,
+  InferenceStats,
+  InferredSchema,
   JSONToGraphQLMapping,
   NestedTypeDefinition,
   NullabilityResult,
