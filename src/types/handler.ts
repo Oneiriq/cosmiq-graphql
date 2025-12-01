@@ -248,3 +248,36 @@ export type CosmosDBConnection = {
   /** Azure credential for managed identity authentication */
   credential?: unknown
 }
+
+/**
+ * Connection result for paginated queries
+ */
+export type ConnectionResult<T> = {
+  /** Items in the current page */
+  items: T[]
+  /** Continuation token for next page */
+  continuationToken?: string
+  /** Whether more items are available */
+  hasMore: boolean
+}
+
+/**
+ * Query filters for list queries
+ */
+export type QueryFilters = {
+  /** Filter by partition key */
+  partitionKey?: string
+  /** Maximum number of items to return (default: 100) */
+  limit?: number
+  /** Continuation token from previous query */
+  continuationToken?: string
+  /** Field name to sort by */
+  orderBy?: string
+  /** Sort direction (default: ASC) */
+  orderDirection?: 'ASC' | 'DESC'
+}
+
+/**
+ * Order direction enum values
+ */
+export type OrderDirection = 'ASC' | 'DESC'

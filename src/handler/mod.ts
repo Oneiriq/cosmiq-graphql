@@ -5,3 +5,7 @@
  */
 
 export { parseConnectionConfig, parseConnectionString } from './connection-parser.ts'
+export { sampleDocuments } from './document-sampler.ts'
+export { buildResolvers } from './resolver-builder.ts'
+export type { BuildResolversOptions } from './resolver-builder.ts'
+export type { SampleDocumentsOptions } from './document-sampler.ts'
