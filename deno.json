@@ -25,9 +25,12 @@
   ],
 	"exports": {
 		".": "./mod.ts",
-		"./types": "./src/types/mod.ts",
-		"./utils": "./src/utils/mod.ts",
-		"./errors": "./src/errors/mod.ts"
+		"./src/errors": "./src/errors/mod.ts",
+    "./src/handler": "./src/handler/mod.ts",
+    "./src/infer": "./src/infer/mod.ts",
+    "./src/schema": "./src/schema/mod.ts",
+		"./src/types": "./src/types/mod.ts",
+		"./src/utils": "./src/utils/mod.ts"
 	},
 	"compilerOptions": {
 		"strict": true
@@ -88,7 +91,11 @@
 		"@std/testing/bdd": "jsr:@std/testing@^1.0.0/bdd",
 		"@std/testing/mock": "jsr:@std/testing@^1.0.0/mock",
 		"@std/streams": "jsr:@std/streams@^1.0.0",
-		"@std/async": "jsr:@std/async@^1.0.0"
+		"@std/async": "jsr:@std/async@^1.0.0",
+    "@oneiriq/stoat-logger": "jsr:@oneiriq/stoat-logger@^1.1.0",
+    "@graphql-mesh/types": "npm:@graphql-mesh/types@^0.104.17",
+    "@graphql-mesh/compose-cli": "npm:@graphql-mesh/compose-cli@^1.5.4",
+    "graphql": "npm:graphql@^16.12.0"
 	},
 	"exclude": []
 }
