@@ -6,7 +6,7 @@
 
 import type { Container } from '@azure/cosmos'
 import type { CosmosDBDocument } from '../types/cosmosdb.ts'
-import { QueryFailedError, createErrorContext } from '../errors/mod.ts'
+import { createErrorContext, QueryFailedError } from '../errors/mod.ts'
 
 /**
  * Options for sampling documents from a CosmosDB container

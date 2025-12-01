@@ -6,8 +6,8 @@
 
 import type { CosmosDBConnection, CosmosDBSubgraphConfig } from '../types/handler.ts'
 import {
-  ConflictingAuthMethodsError,
   ConfigurationError,
+  ConflictingAuthMethodsError,
   createErrorContext,
   InvalidConnectionStringError,
   MissingAuthMethodError,

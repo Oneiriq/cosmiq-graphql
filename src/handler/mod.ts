@@ -4,7 +4,4 @@
  * @module
  */
 
-export {
-  parseConnectionString,
-  parseConnectionConfig
-} from './connection-parser.ts'
+export { parseConnectionConfig, parseConnectionString } from './connection-parser.ts'

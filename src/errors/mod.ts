@@ -12,7 +12,7 @@
  * 'high' - Serious issues, likely to cause failures
  * 'critical' - Severe issues, requires immediate attention
  */
-export type ErrorSeverity = 'low' | 'medium' | 'high' | 'critical';
+export type ErrorSeverity = 'low' | 'medium' | 'high' | 'critical'
 
 /**
  * Error codes for CosmosDB operations
@@ -30,8 +30,10 @@ export enum ErrorCode {
   CONFIGURATION_ERROR = 'CONFIGURATION_ERROR',
   /** Query execution failed */
   QUERY_FAILED = 'QUERY_FAILED',
+  /** Validation error for input data */
+  VALIDATION_ERROR = 'VALIDATION_ERROR',
   /** Unknown error */
-  UNKNOWN_ERROR = 'UNKNOWN_ERROR'
+  UNKNOWN_ERROR = 'UNKNOWN_ERROR',
 }
 
 /**
@@ -41,11 +43,11 @@ export enum ErrorCode {
  */
 export interface CosmosDBErrorContext {
   /** Component where the error occurred */
-  component: string;
+  component: string
   /** Timestamp when the error occurred (ISO 8601 format) */
-  timestamp: string;
+  timestamp: string
   /** Additional metadata about the error */
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, unknown>
 }
 
 /**
@@ -63,10 +65,10 @@ export interface CosmosDBErrorContext {
  * ```
  */
 export class CosmosDBError extends Error {
-  public readonly context: CosmosDBErrorContext;
-  public readonly code: ErrorCode;
-  public readonly severity: ErrorSeverity;
-  public readonly retryable: boolean;
+  public readonly context: CosmosDBErrorContext
+  public readonly code: ErrorCode
+  public readonly severity: ErrorSeverity
+  public readonly retryable: boolean
 
   constructor({
     message,
@@ -75,21 +77,21 @@ export class CosmosDBError extends Error {
     severity,
     retryable = false,
   }: {
-    message: string;
-    context: CosmosDBErrorContext;
-    code: ErrorCode;
-    severity: ErrorSeverity;
-    retryable?: boolean;
+    message: string
+    context: CosmosDBErrorContext
+    code: ErrorCode
+    severity: ErrorSeverity
+    retryable?: boolean
   }) {
-    super(message);
-    this.name = this.constructor.name;
-    this.context = context;
-    this.code = code;
-    this.severity = severity;
-    this.retryable = retryable;
+    super(message)
+    this.name = this.constructor.name
+    this.context = context
+    this.code = code
+    this.severity = severity
+    this.retryable = retryable
 
     if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, this.constructor);
+      Error.captureStackTrace(this, this.constructor)
     }
   }
 
@@ -107,7 +109,7 @@ export class CosmosDBError extends Error {
       retryable: this.retryable,
       context: this.context,
       stack: this.stack,
-    };
+    }
   }
 }
 
@@ -127,7 +129,7 @@ export class InvalidConnectionStringError extends CosmosDBError {
       code: ErrorCode.INVALID_CONNECTION_STRING,
       severity: 'high',
       retryable: false,
-    });
+    })
   }
 }
 
@@ -148,7 +150,7 @@ export class MissingCredentialError extends CosmosDBError {
       code: ErrorCode.MISSING_CREDENTIAL,
       severity: 'high',
       retryable: false,
-    });
+    })
   }
 }
 
@@ -168,7 +170,7 @@ export class ConflictingAuthMethodsError extends CosmosDBError {
       code: ErrorCode.CONFLICTING_AUTH_METHODS,
       severity: 'high',
       retryable: false,
-    });
+    })
   }
 }
 
@@ -188,7 +190,7 @@ export class MissingAuthMethodError extends CosmosDBError {
       code: ErrorCode.MISSING_AUTH_METHOD,
       severity: 'high',
       retryable: false,
-    });
+    })
   }
 }
 
@@ -210,7 +212,7 @@ export class ConfigurationError extends CosmosDBError {
       code: ErrorCode.CONFIGURATION_ERROR,
       severity: 'medium',
       retryable: false,
-    });
+    })
   }
 }
 
@@ -233,7 +235,30 @@ export class QueryFailedError extends CosmosDBError {
       code: ErrorCode.QUERY_FAILED,
       severity: 'high',
       retryable: true,
-    });
+    })
+  }
+}
+
+/**
+ * Error thrown when input validation fails
+ *
+ * Thrown when input data does not meet required validation criteria,
+ * such as empty arrays, invalid formats, or out-of-range values.
+ *
+ * @example
+ * ```ts
+ * throw new ValidationError('Documents array cannot be empty', context);
+ * ```
+ */
+export class ValidationError extends CosmosDBError {
+  constructor(message: string, context: CosmosDBErrorContext) {
+    super({
+      message,
+      context,
+      code: ErrorCode.VALIDATION_ERROR,
+      severity: 'high',
+      retryable: false,
+    })
   }
 }
 
@@ -253,14 +278,14 @@ export function createErrorContext({
   component,
   metadata,
 }: {
-  component: string;
-  metadata?: Record<string, unknown>;
+  component: string
+  metadata?: Record<string, unknown>
 }): CosmosDBErrorContext {
   return {
     component,
     timestamp: new Date().toISOString(),
     metadata,
-  };
+  }
 }
 
 /**
@@ -277,10 +302,10 @@ export function createErrorContext({
  * ```
  */
 export class ErrorBoundary {
-  private readonly component: string;
+  private readonly component: string
 
   constructor(component: string) {
-    this.component = component;
+    this.component = component
   }
 
   /**
@@ -300,10 +325,10 @@ export class ErrorBoundary {
    */
   async execute<T>(fn: () => Promise<T>): Promise<T> {
     try {
-      return await fn();
+      return await fn()
     } catch (error) {
       if (error instanceof CosmosDBError) {
-        throw error;
+        throw error
       }
 
       const context = createErrorContext({
@@ -311,7 +336,7 @@ export class ErrorBoundary {
         metadata: {
           originalError: error instanceof Error ? error.message : String(error),
         },
-      });
+      })
 
       throw new CosmosDBError({
         message: error instanceof Error ? error.message : String(error),
@@ -319,7 +344,7 @@ export class ErrorBoundary {
         code: ErrorCode.UNKNOWN_ERROR,
         severity: 'medium',
         retryable: false,
-      });
+      })
     }
   }
 
@@ -341,10 +366,10 @@ export class ErrorBoundary {
    */
   executeSync<T>(fn: () => T): T {
     try {
-      return fn();
+      return fn()
     } catch (error) {
       if (error instanceof CosmosDBError) {
-        throw error;
+        throw error
       }
 
       const context = createErrorContext({
@@ -352,7 +377,7 @@ export class ErrorBoundary {
         metadata: {
           originalError: error instanceof Error ? error.message : String(error),
         },
-      });
+      })
 
       throw new CosmosDBError({
         message: error instanceof Error ? error.message : String(error),
@@ -360,7 +385,7 @@ export class ErrorBoundary {
         code: ErrorCode.UNKNOWN_ERROR,
         severity: 'medium',
         retryable: false,
-      });
+      })
     }
   }
 }
