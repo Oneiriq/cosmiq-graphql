@@ -24,6 +24,11 @@ export class TypeConflictError extends Error {
  * @param config - Optional type system configuration
  * @returns Resolved GraphQL type string
  * @throws {TypeConflictError} If config.conflictResolution is 'error'
+ *
+ * @example
+ * ```ts
+ * resolveTypeConflict({ types: new Set(['string', 'number']) }) // 'String'
+ * ```
  */
 export function resolveTypeConflict({
   types,
@@ -62,6 +67,11 @@ export function resolveTypeConflict({
  *
  * @param elementTypes - Set of element types observed in arrays
  * @returns Resolved GraphQL type string for array elements
+ *
+ * @example
+ * ```ts
+ * resolveArrayElementType({ elementTypes: new Set(['string', 'number']) }) // 'String'
+ * ```
  */
 export function resolveArrayElementType({
   elementTypes,
@@ -86,6 +96,12 @@ export function resolveArrayElementType({
  *
  * @param type - Primitive type identifier
  * @returns GraphQL scalar type name
+ *
+ * @example
+ * ```ts
+ * primitiveToGraphQL('string') // 'String'
+ * primitiveToGraphQL('number') // 'Float'
+ * ```
  */
 function primitiveToGraphQL(type: PrimitiveType): string {
   switch (type) {

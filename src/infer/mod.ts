@@ -21,3 +21,7 @@ export { resolveArrayElementType, resolveTypeConflict, TypeConflictError } from 
 export { isIdField } from './id-detection.ts'
 
 export { inferNumberType, isInteger } from './number-inference.ts'
+
+
+export { buildGraphQLSDL } from './sdl-generator.ts'
+export type { BuildSDLOptions } from './sdl-generator.ts'
