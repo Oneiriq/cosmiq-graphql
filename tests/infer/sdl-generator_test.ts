@@ -449,7 +449,10 @@ describe('buildGraphQLSDL', () => {
 
       const sdl = buildGraphQLSDL({ schema })
 
-      assertStringIncludes(sdl, 'file(id: ID!): File')
+      assertStringIncludes(sdl, 'file(')
+      assertStringIncludes(sdl, 'id: ID!')
+      assertStringIncludes(sdl, 'partitionKey: String')
+      assertStringIncludes(sdl, '): File')
     })
 
     it('should generate list query with limit parameter', () => {
@@ -475,7 +478,9 @@ describe('buildGraphQLSDL', () => {
 
       assertStringIncludes(sdl, 'files(')
       assertStringIncludes(sdl, 'limit: Int = 100')
-      assertStringIncludes(sdl, '): [File!]!')
+      assertStringIncludes(sdl, '): FileFilesConnection!')
+      assertStringIncludes(sdl, 'enum OrderDirection')
+      assertStringIncludes(sdl, 'type FileFilesConnection')
     })
 
     it('should include query descriptions', () => {
@@ -500,8 +505,8 @@ describe('buildGraphQLSDL', () => {
       const sdl = buildGraphQLSDL({ schema })
 
       assertStringIncludes(sdl, '"""Get a single User by ID"""')
-      assertStringIncludes(sdl, '"""List Users with optional filtering"""')
-      assertStringIncludes(sdl, '"""Maximum number of results"""')
+      assertStringIncludes(sdl, '"""List Users with pagination, filtering, and sorting"""')
+      assertStringIncludes(sdl, '"""Maximum number of results (default: 100)"""')
     })
 
     it('should not include Query type when includeQueries is false', () => {
@@ -551,7 +556,9 @@ describe('buildGraphQLSDL', () => {
 
       const sdl = buildGraphQLSDL({ schema })
 
-      assertStringIncludes(sdl, 'productitem(id: ID!): ProductItem')
+      assertStringIncludes(sdl, 'productitem(')
+      assertStringIncludes(sdl, 'id: ID!')
+      assertStringIncludes(sdl, '): ProductItem')
       assertStringIncludes(sdl, 'productitems(')
     })
   })
@@ -713,7 +720,9 @@ describe('buildGraphQLSDL', () => {
       const sdl = buildGraphQLSDL({ schema })
 
       assertStringIncludes(sdl, 'type Type2024 {')
-      assertStringIncludes(sdl, 'type2024(id: ID!): Type2024')
+      assertStringIncludes(sdl, 'type2024(')
+      assertStringIncludes(sdl, 'id: ID!')
+      assertStringIncludes(sdl, '): Type2024')
     })
 
     it('should handle type names with underscores', () => {
@@ -788,7 +797,8 @@ describe('buildGraphQLSDL', () => {
       const sdl = buildGraphQLSDL({ schema })
 
       assertStringIncludes(sdl, 'type VeryLongTypeNameThatExceedsNormalLengthLimits {')
-      assertStringIncludes(sdl, 'verylongtypenamethatexceedsnormallengthlimits(id: ID!)')
+      assertStringIncludes(sdl, 'verylongtypenamethatexceedsnormallengthlimits(')
+      assertStringIncludes(sdl, 'id: ID!')
     })
 
     it('should handle complex real-world schema', () => {
@@ -860,7 +870,9 @@ describe('buildGraphQLSDL', () => {
       assertStringIncludes(sdl, 'author: BlogPostAuthor!')
       assertStringIncludes(sdl, 'comments: [BlogPostComments!]')
       assertStringIncludes(sdl, 'type Query {')
-      assertStringIncludes(sdl, 'blogpost(id: ID!): BlogPost')
+      assertStringIncludes(sdl, 'blogpost(')
+      assertStringIncludes(sdl, 'id: ID!')
+      assertStringIncludes(sdl, '): BlogPost')
       assertStringIncludes(sdl, 'blogposts(')
     })
   })

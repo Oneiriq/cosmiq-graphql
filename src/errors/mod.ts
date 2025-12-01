@@ -263,6 +263,26 @@ export class ValidationError extends CosmosDBError {
 }
 
 /**
+ * Error thrown when a field name is invalid (e.g., for SQL injection prevention)
+ *
+ * @example
+ * ```ts
+ * throw new InvalidFieldNameError('Invalid field name: "field;DROP TABLE"', context);
+ * ```
+ */
+export class InvalidFieldNameError extends CosmosDBError {
+  constructor(message: string, context: CosmosDBErrorContext) {
+    super({
+      message,
+      context,
+      code: ErrorCode.VALIDATION_ERROR,
+      severity: 'high',
+      retryable: false,
+    })
+  }
+}
+
+/**
  * Create error context with timestamp
  *
  * @param component - Component where the error occurred

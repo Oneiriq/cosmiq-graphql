@@ -59,6 +59,8 @@ export function buildGraphQLSDL({
 
   // Add Query type if requested
   if (includeQueries) {
+    parts.push(buildOrderDirectionEnum())
+    parts.push(buildConnectionType(schema.rootType))
     parts.push(buildQueryType(schema.rootType))
   }
 
@@ -118,11 +120,63 @@ function formatField(field: GraphQLFieldDef): string {
 }
 
 /**
- * Build Query type with standard queries for the root type
+ * Build OrderDirection enum type for sorting
  *
- * Generates a Query type with two standard queries:
- * - Single item query: `{typeName}(id: ID!): {TypeName}`
- * - List query: `{typeName}s(limit: Int = 100): [{TypeName}!]!`
+ * @returns Formatted OrderDirection enum SDL string
+ */
+function buildOrderDirectionEnum(): string {
+  return `"""Sort direction for query results"""
+enum OrderDirection {
+  """Ascending order"""
+  ASC
+  
+  """Descending order"""
+  DESC
+}`
+}
+
+/**
+ * Build connection type for paginated results
+ *
+ * @param rootType - Root GraphQL type definition
+ * @returns Formatted connection type SDL string
+ *
+ * @example
+ * ```ts
+ * const connectionSDL = buildConnectionType({ name: 'File', fields: [...] });
+ * // Returns:
+ * // type FilesConnection {
+ * //   items: [File!]!
+ * //   continuationToken: String
+ * //   hasMore: Boolean!
+ * // }
+ * ```
+ */
+function buildConnectionType(rootType: GraphQLTypeDef): string {
+  const typeName = rootType.name
+  const typeNameLower = typeName.toLowerCase()
+  const typeNamePlural = `${typeNameLower}s`
+  const connectionName = `${typeName}${typeNamePlural.charAt(0).toUpperCase() + typeNamePlural.slice(1)}Connection`
+
+  return `"""Paginated connection for ${typeName} queries"""
+type ${connectionName} {
+  """Items in the current page"""
+  items: [${typeName}!]!
+  
+  """Continuation token for fetching the next page"""
+  continuationToken: String
+  
+  """Whether more items are available"""
+  hasMore: Boolean!
+}`
+}
+
+/**
+ * Build Query type with enhanced queries for the root type
+ *
+ * Generates a Query type with two queries:
+ * - Single item query: `{typeName}(id: ID!, partitionKey: String)` - with optional partition key
+ * - List query: `{typeName}s(limit: Int, partitionKey: String, continuationToken: String, orderBy: String, orderDirection: OrderDirection)` - with pagination, filtering, and sorting
  *
  * @param rootType - Root GraphQL type definition
  * @returns Formatted Query type SDL string
@@ -130,26 +184,41 @@ function formatField(field: GraphQLFieldDef): string {
  * @example
  * ```ts
  * const querySDL = buildQueryType({ name: 'File', fields: [...] });
- * // Returns:
- * // type Query {
- * //   file(id: ID!): File
- * //   files(limit: Int = 100): [File!]!
- * // }
+ * // Returns enhanced Query type with pagination and filtering
  * ```
  */
 function buildQueryType(rootType: GraphQLTypeDef): string {
   const typeName = rootType.name
   const typeNameLower = typeName.toLowerCase()
   const typeNamePlural = `${typeNameLower}s`
+  const connectionName = `${typeName}${typeNamePlural.charAt(0).toUpperCase() + typeNamePlural.slice(1)}Connection`
 
   return `type Query {
   """Get a single ${typeName} by ID"""
-  ${typeNameLower}(id: ID!): ${typeName}
+  ${typeNameLower}(
+    """Document ID"""
+    id: ID!
+    
+    """Partition key (optional, defaults to ID if not provided)"""
+    partitionKey: String
+  ): ${typeName}
 
-  """List ${typeName}s with optional filtering"""
+  """List ${typeName}s with pagination, filtering, and sorting"""
   ${typeNamePlural}(
-    """Maximum number of results"""
+    """Maximum number of results (default: 100)"""
     limit: Int = 100
-  ): [${typeName}!]!
+    
+    """Filter by partition key"""
+    partitionKey: String
+    
+    """Continuation token from previous query for pagination"""
+    continuationToken: String
+    
+    """Field name to sort by"""
+    orderBy: String
+    
+    """Sort direction (default: ASC)"""
+    orderDirection: OrderDirection = ASC
+  ): ${connectionName}!
 }`
 }
