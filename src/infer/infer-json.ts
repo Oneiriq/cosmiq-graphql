@@ -60,7 +60,6 @@ export function inferJSONStructure(
   const fields = new Map<string, FieldInfo>()
   const conflicts: Array<{ field: string; types: Set<PrimitiveType> }> = []
 
-  // Placeholder implementation: collect all field names and basic types
   for (const doc of documents) {
     analyzeDocument(doc, fields, documents.length)
   }
