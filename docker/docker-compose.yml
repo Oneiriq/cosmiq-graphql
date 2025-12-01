@@ -1,0 +1,60 @@
+networks:
+  cosmosdb-schemagen-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.1.100.1/28
+          gateway: 172.1.100.1
+
+services:
+  azurite:
+    image: azurite
+    build:
+      context: dockerfiles
+      dockerfile: azurite.dockerfile
+    ports:
+      - "11000-11002:10000-10002"
+    networks:
+      cosmosdb-schemagen-network:
+        ipv4_address: 172.1.100.4
+    volumes:
+      - ~/.azurite_vol:/data
+
+  cli:
+    image: az-cli
+    build:
+      context: dockerfiles
+      dockerfile: az_cli.dockerfile
+    environment:
+      - AZURITE_ACCOUNTS=fsazurite1:C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==
+      - AZURITE_SERVICE_NAME=azurite
+      - COSMOS_SERVICE_NAME=cosmos-emulator
+      - COSMOS_EMULATOR_KEY=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==
+      - DATABASE_NAME=db1
+      - CONTAINER_NAME=test
+    networks:
+      cosmosdb-schemagen-network:
+        ipv4_address: 172.1.100.5
+    volumes:
+      - ~/.azurite_vol:/data
+      - ./scripts:/scripts
+    depends_on:
+      - azurite
+
+  cosmos-emulator:
+    image: cosmos-emulator
+    build:
+      context: dockerfiles
+      dockerfile: az_cosmosdb.dockerfile
+    ports:
+      - "8081:8081"
+      - "10250-10255:10250-10255"
+    networks:
+      cosmosdb-schemagen-network:
+        ipv4_address: 172.1.100.10
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 5g
+
