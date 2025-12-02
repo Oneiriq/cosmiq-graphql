@@ -126,18 +126,30 @@ export type HandlerResult = {
 }
 
 /**
+ * Progress event for schema generation operations
+ */
+export type ProgressEvent = {
+  /** Current stage of processing */
+  stage:
+    | 'sampling_started'
+    | 'sampling_progress'
+    | 'sampling_complete'
+    | 'inference_started'
+    | 'inference_complete'
+    | 'sdl_generation_started'
+    | 'sdl_generation_complete'
+  /** Progress percentage (0-100) */
+  progress?: number
+  /** Optional descriptive message */
+  message?: string
+  /** Optional additional metadata */
+  metadata?: Record<string, unknown>
+}
+
+/**
  * Progress callback function type
  */
-export type ProgressCallback = (progress: {
-  /** Current step description */
-  step: string
-  /** Documents processed so far */
-  current: number
-  /** Total documents to process */
-  total: number
-  /** Percentage complete (0-100) */
-  percentage: number
-}) => void
+export type ProgressCallback = (event: ProgressEvent) => void
 
 /**
  * Handler options passed to schema generation function

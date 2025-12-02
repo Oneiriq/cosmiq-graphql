@@ -5,14 +5,27 @@
  */
 
 import type { PrimitiveType, TypeSystemConfig } from '../types/infer.ts'
+import { CosmosDBError, createErrorContext, ErrorCode } from '../errors/mod.ts'
 
 /**
  * Custom error for type conflicts
  */
-export class TypeConflictError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'TypeConflictError'
+export class TypeConflictError extends CosmosDBError {
+  constructor(message: string, types: Set<PrimitiveType>, fieldName?: string) {
+    super({
+      message,
+      context: createErrorContext({
+        component: 'type-conflict-resolver',
+        metadata: {
+          conflictingTypes: Array.from(types),
+          fieldName,
+          typeCount: types.size,
+        },
+      }),
+      code: ErrorCode.VALIDATION_ERROR,
+      severity: 'high',
+      retryable: false,
+    })
   }
 }
 
@@ -55,6 +68,7 @@ export function resolveTypeConflict({
   if (config?.conflictResolution === 'error') {
     throw new TypeConflictError(
       `Type conflict detected: ${Array.from(nonNullTypes).join(' | ')}`,
+      nonNullTypes,
     )
   }
 
@@ -94,14 +108,22 @@ export function resolveArrayElementType({
 /**
  * Map primitive type to GraphQL scalar
  *
- * @param type - Primitive type identifier
+ * Converts JavaScript primitive type names to their corresponding GraphQL scalar types.
+ * Uses conservative defaults (Float for numbers, String for nulls/unknowns).
+ * For detailed number inference (Int vs Float), use the number-inference module instead.
+ *
+ * @param type - Primitive type identifier from type detection
  * @returns GraphQL scalar type name
  *
  * @example
  * ```ts
  * primitiveToGraphQL('string') // 'String'
- * primitiveToGraphQL('number') // 'Float'
+ * primitiveToGraphQL('number') // 'Float' (conservative default)
+ * primitiveToGraphQL('boolean') // 'Boolean'
+ * primitiveToGraphQL('object') // 'JSON'
  * ```
+ *
+ * @internal
  */
 function primitiveToGraphQL(type: PrimitiveType): string {
   switch (type) {

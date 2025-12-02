@@ -5,6 +5,7 @@
  */
 
 import type { GraphQLFieldDef, GraphQLTypeDef, InferredSchema } from '../types/infer.ts'
+import type { ProgressCallback } from '../types/handler.ts'
 
 /**
  * Options for building GraphQL SDL
@@ -14,6 +15,8 @@ export type BuildSDLOptions = {
   schema: InferredSchema
   /** Whether to include Query type (default: true) */
   includeQueries?: boolean
+  /** Optional progress callback */
+  onProgress?: ProgressCallback
 }
 
 /**
@@ -46,7 +49,15 @@ export type BuildSDLOptions = {
 export function buildGraphQLSDL({
   schema,
   includeQueries = true,
+  onProgress,
 }: BuildSDLOptions): string {
+  // Report SDL generation started
+  onProgress?.({
+    stage: 'sdl_generation_started',
+    message: `Starting SDL generation for ${schema.stats.typesGenerated} types`,
+    metadata: { typesCount: schema.stats.typesGenerated },
+  })
+
   const parts: string[] = []
 
   // Add root type
@@ -64,11 +75,24 @@ export function buildGraphQLSDL({
     parts.push(buildQueryType(schema.rootType))
   }
 
-  return parts.join('\n\n')
+  const sdl = parts.join('\n\n')
+
+  // Report SDL generation complete
+  onProgress?.({
+    stage: 'sdl_generation_complete',
+    progress: 100,
+    message: `SDL generation complete: ${sdl.split('\n').length} lines generated`,
+    metadata: { linesGenerated: sdl.split('\n').length },
+  })
+
+  return sdl
 }
 
 /**
  * Format a single GraphQL type definition as SDL
+ *
+ * Converts a GraphQLTypeDef object into a properly formatted GraphQL SDL type block.
+ * Each field is indented with 2 spaces for readability.
  *
  * @param type - GraphQL type definition to format
  * @returns Formatted SDL string for the type
@@ -88,6 +112,8 @@ export function buildGraphQLSDL({
  * //   name: String!
  * // }
  * ```
+ *
+ * @internal
  */
 function formatTypeDefinition(type: GraphQLTypeDef): string {
   const lines: string[] = []
@@ -106,6 +132,9 @@ function formatTypeDefinition(type: GraphQLTypeDef): string {
 /**
  * Format a single GraphQL field
  *
+ * Converts a field definition into SDL format: "fieldName: FieldType".
+ * Type modifiers like nullability (!) and lists ([]) are preserved from the type string.
+ *
  * @param field - GraphQL field definition to format
  * @returns Formatted field string (e.g., 'id: ID!', 'tags: [String!]')
  *
@@ -113,7 +142,10 @@ function formatTypeDefinition(type: GraphQLTypeDef): string {
  * ```ts
  * formatField({ name: 'id', type: 'ID!' }) // 'id: ID!'
  * formatField({ name: 'tags', type: '[String!]' }) // 'tags: [String!]'
+ * formatField({ name: 'age', type: 'Int' }) // 'age: Int'
  * ```
+ *
+ * @internal
  */
 function formatField(field: GraphQLFieldDef): string {
   return `${field.name}: ${field.type}`
@@ -122,7 +154,25 @@ function formatField(field: GraphQLFieldDef): string {
 /**
  * Build OrderDirection enum type for sorting
  *
- * @returns Formatted OrderDirection enum SDL string
+ * Generates the SDL for an OrderDirection enum with ASC and DESC values.
+ * This enum is used in list queries to specify sort order.
+ *
+ * @returns Formatted OrderDirection enum SDL string with documentation comments
+ *
+ * @example
+ * ```ts
+ * const enumSDL = buildOrderDirectionEnum()
+ * // Returns:
+ * // """Sort direction for query results"""
+ * // enum OrderDirection {
+ * //   """Ascending order"""
+ * //   ASC
+ * //   """Descending order"""
+ * //   DESC
+ * // }
+ * ```
+ *
+ * @internal
  */
 function buildOrderDirectionEnum(): string {
   return `"""Sort direction for query results"""
@@ -138,19 +188,29 @@ enum OrderDirection {
 /**
  * Build connection type for paginated results
  *
- * @param rootType - Root GraphQL type definition
- * @returns Formatted connection type SDL string
+ * Generates a Connection type following the Relay-inspired pagination pattern
+ * adapted for CosmosDB. The connection type wraps a list of items with pagination
+ * metadata (continuation token and hasMore flag).
+ *
+ * @param rootType - Root GraphQL type definition (e.g., File)
+ * @returns Formatted connection type SDL string (e.g., FilesConnection)
  *
  * @example
  * ```ts
- * const connectionSDL = buildConnectionType({ name: 'File', fields: [...] });
+ * const connectionSDL = buildConnectionType({ name: 'File', fields: [...] })
  * // Returns:
+ * // """Paginated connection for File queries"""
  * // type FilesConnection {
+ * //   """Items in the current page"""
  * //   items: [File!]!
+ * //   """Continuation token for fetching the next page"""
  * //   continuationToken: String
+ * //   """Whether more items are available"""
  * //   hasMore: Boolean!
  * // }
  * ```
+ *
+ * @internal
  */
 function buildConnectionType(rootType: GraphQLTypeDef): string {
   const typeName = rootType.name
@@ -174,18 +234,27 @@ type ${connectionName} {
 /**
  * Build Query type with enhanced queries for the root type
  *
- * Generates a Query type with two queries:
- * - Single item query: `{typeName}(id: ID!, partitionKey: String)` - with optional partition key
- * - List query: `{typeName}s(limit: Int, partitionKey: String, continuationToken: String, orderBy: String, orderDirection: OrderDirection)` - with pagination, filtering, and sorting
+ * Generates a comprehensive Query type with two GraphQL queries:
+ * 1. Single-item query: `{typeName}(id: ID!, partitionKey: String)` - Fetch by ID with optional partition key
+ * 2. List query: `{typeName}s(...)` - Paginated list with filtering, sorting, and continuation tokens
  *
- * @param rootType - Root GraphQL type definition
- * @returns Formatted Query type SDL string
+ * The list query returns a Connection type instead of a simple array to provide
+ * pagination metadata.
+ *
+ * @param rootType - Root GraphQL type definition (determines query names and types)
+ * @returns Formatted Query type SDL string with full documentation comments
  *
  * @example
  * ```ts
- * const querySDL = buildQueryType({ name: 'File', fields: [...] });
- * // Returns enhanced Query type with pagination and filtering
+ * const querySDL = buildQueryType({ name: 'File', fields: [...] })
+ * // Returns:
+ * // type Query {
+ * //   file(id: ID!, partitionKey: String): File
+ * //   files(limit: Int = 100, ...): FilesConnection!
+ * // }
  * ```
+ *
+ * @internal
  */
 function buildQueryType(rootType: GraphQLTypeDef): string {
   const typeName = rootType.name

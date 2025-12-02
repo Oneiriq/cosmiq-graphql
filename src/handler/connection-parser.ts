@@ -51,7 +51,16 @@ export function parseConnectionString(connectionString: string): CosmosDBConnect
   if (!config.endpoint || !config.key) {
     throw new InvalidConnectionStringError(
       'Invalid connection string. Expected format: AccountEndpoint=...;AccountKey=...;',
-      createErrorContext({ component: 'connection-parser' }),
+      createErrorContext({
+        component: 'connection-parser',
+        metadata: {
+          parsedParts: {
+            hasEndpoint: !!config.endpoint,
+            hasKey: !!config.key,
+            endpointValue: config.endpoint ? '[redacted]' : undefined,
+          },
+        },
+      }),
     )
   }
 
@@ -86,21 +95,49 @@ export function parseConnectionConfig(
   if ((endpoint && !credential) || (!endpoint && credential)) {
     throw new MissingCredentialError(
       'Invalid configuration: managed identity authentication requires both endpoint and credential.',
-      createErrorContext({ component: 'connection-parser' }),
+      createErrorContext({
+        component: 'connection-parser',
+        metadata: {
+          providedConfig: {
+            hasEndpoint: !!endpoint,
+            hasCredential: !!credential,
+            endpointValue: endpoint ? '[redacted]' : undefined,
+          },
+        },
+      }),
     )
   }
 
   if (hasConnectionString && hasManagedIdentity) {
     throw new ConflictingAuthMethodsError(
       'Invalid configuration: cannot use both connectionString and managed identity (endpoint + credential). Please use only one authentication method.',
-      createErrorContext({ component: 'connection-parser' }),
+      createErrorContext({
+        component: 'connection-parser',
+        metadata: {
+          providedConfig: {
+            hasConnectionString,
+            hasManagedIdentity,
+            hasEndpoint: !!endpoint,
+            hasCredential: !!credential,
+          },
+        },
+      }),
     )
   }
 
   if (!hasConnectionString && !hasManagedIdentity) {
     throw new MissingAuthMethodError(
       'Invalid configuration: must provide either connectionString OR (endpoint + credential) for authentication.',
-      createErrorContext({ component: 'connection-parser' }),
+      createErrorContext({
+        component: 'connection-parser',
+        metadata: {
+          providedConfig: {
+            hasConnectionString,
+            hasEndpoint: !!endpoint,
+            hasCredential: !!credential,
+          },
+        },
+      }),
     )
   }
 
@@ -117,6 +154,15 @@ export function parseConnectionConfig(
 
   throw new ConfigurationError(
     'Unexpected configuration state.',
-    createErrorContext({ component: 'connection-parser' }),
+    createErrorContext({
+      component: 'connection-parser',
+      metadata: {
+        providedConfig: {
+          hasConnectionString: !!connectionString,
+          hasEndpoint: !!endpoint,
+          hasCredential: !!credential,
+        },
+      },
+    }),
   )
 }

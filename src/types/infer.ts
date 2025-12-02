@@ -35,6 +35,8 @@ export type FieldInfo = {
   arrayElementTypes?: Set<PrimitiveType>
   /** Nested field definitions for object types */
   nestedFields?: Map<string, FieldInfo>
+  /** Sample of number values (for Int vs Float inference) */
+  numberValues?: number[]
 }
 
 /**
@@ -64,6 +66,23 @@ export type NullabilityResult = 'required' | 'optional'
  * Number type inference result
  */
 export type NumberType = 'Int' | 'Float'
+
+/**
+ * Nested type naming strategy
+ */
+export type NestedNamingStrategy =
+  | 'hierarchical' // Default: User_Address_City
+  | 'flat' // User_City (skip intermediate levels)
+  | 'short' // UAddrCity (abbreviate type names)
+
+/**
+ * Custom type name template function
+ */
+export type TypeNameTemplate = (
+  parentType: string,
+  fieldName: string,
+  depth: number,
+) => string
 
 /**
  * Nested type definition generated during inference
@@ -99,8 +118,14 @@ export type TypeSystemConfig = {
   /** Fallback type for deeply nested objects (default: 'JSON') */
   nestedTypeFallback: 'JSON' | 'String'
 
-  /** Number inference mode (default: 'strict') */
+  /** Number inference mode (default: 'float' for backward compatibility) */
   numberInference: 'strict' | 'float'
+
+  /** Naming strategy for nested types (default: 'hierarchical') */
+  nestedNamingStrategy: NestedNamingStrategy
+
+  /** Custom type name template function (overrides nestedNamingStrategy if provided) */
+  typeNameTemplate?: TypeNameTemplate
 }
 
 /**

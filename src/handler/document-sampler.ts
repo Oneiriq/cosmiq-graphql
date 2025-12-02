@@ -7,8 +7,9 @@
 
 import type { Container } from '@azure/cosmos'
 import type { CosmosDBDocument } from '../types/cosmosdb.ts'
-import { createErrorContext, QueryFailedError, ValidationError } from '../errors/mod.ts'
+import { createErrorContext, ValidationError } from '../errors/mod.ts'
 import { withRetry } from '../utils/retryWrapper.ts'
+import { getPartitionKeyPath } from '../utils/containerMetadata.ts'
 import type { RetryConfig } from '../types/handler.ts'
 
 /**
@@ -80,8 +81,20 @@ type PartitionSampleState = {
 /**
  * Validate sampling options
  *
- * @param options - Options to validate
- * @throws ValidationError if options are invalid
+ * Ensures that sample size is a positive integer and warns about large sample sizes
+ * that could consume significant Request Units (RU).
+ *
+ * @param options - Sampling options to validate
+ * @throws {ValidationError} If sample size is not a positive integer
+ *
+ * @example
+ * ```ts
+ * validateOptions({ container, sampleSize: 100 }) // OK
+ * validateOptions({ container, sampleSize: -5 }) // Throws ValidationError
+ * validateOptions({ container, sampleSize: 15000 }) // OK but warns
+ * ```
+ *
+ * @internal
  */
 function validateOptions(options: SampleDocumentsOptions): void {
   const { sampleSize } = options
@@ -91,7 +104,13 @@ function validateOptions(options: SampleDocumentsOptions): void {
       `Sample size must be a positive integer, got: ${sampleSize}`,
       createErrorContext({
         component: 'document-sampler',
-        metadata: { sampleSize },
+        metadata: {
+          sampleSize,
+          strategy: options.strategy ?? 'partition',
+          maxRU: options.maxRU ?? Infinity,
+          providedType: typeof sampleSize,
+          isInteger: Number.isInteger(sampleSize),
+        },
       }),
     )
   }
@@ -105,10 +124,25 @@ function validateOptions(options: SampleDocumentsOptions): void {
 
 /**
  * Implementation for 'top' sampling strategy
- * Uses SELECT TOP N for fast, sequential sampling
  *
- * @param options - Sampling options
- * @returns Sample result
+ * Uses CosmosDB's SELECT TOP N query for fast, sequential sampling. This is the
+ * fastest strategy but may not be representative if data is sorted in a way that
+ * creates bias (e.g., all recent documents have similar structure).
+ *
+ * @param options - Sampling options including container, sampleSize, maxRU, etc.
+ * @returns Promise resolving to sample result with documents and RU consumption
+ *
+ * @example
+ * ```ts
+ * const result = await topSampleImpl({
+ *   container,
+ *   sampleSize: 100,
+ *   maxRU: 1000
+ * })
+ * // Returns first 100 documents with minimal RU cost
+ * ```
+ *
+ * @internal
  */
 async function topSampleImpl(
   options: SampleDocumentsOptions,
@@ -121,51 +155,37 @@ async function topSampleImpl(
       let ruConsumed = 0
       const documents: CosmosDBDocument[] = []
 
-      try {
-        const queryIterator = container.items.query(query)
+      const queryIterator = container.items.query(query)
 
-        while (queryIterator.hasMoreResults()) {
-          const { resources, requestCharge = 0 } = await queryIterator.fetchNext()
-          ruConsumed += requestCharge
+      while (queryIterator.hasMoreResults()) {
+        const { resources, requestCharge = 0 } = await queryIterator.fetchNext()
+        ruConsumed += requestCharge
 
-          if (resources && resources.length > 0) {
-            documents.push(...resources)
-          }
+        if (resources && resources.length > 0) {
+          documents.push(...resources)
+        }
 
-          if (onProgress) {
-            onProgress(documents.length, sampleSize, ruConsumed)
-          }
+        if (onProgress) {
+          onProgress(documents.length, sampleSize, ruConsumed)
+        }
 
-          if (ruConsumed >= maxRU) {
-            return {
-              documents,
-              ruConsumed,
-              status: 'budget_exceeded' as const,
-            }
-          }
-
-          if (!queryIterator.hasMoreResults()) {
-            break
+        if (ruConsumed >= maxRU) {
+          return {
+            documents,
+            ruConsumed,
+            status: 'budget_exceeded' as const,
           }
         }
 
-        return {
-          documents,
-          ruConsumed,
-          status: 'completed' as const,
+        if (!queryIterator.hasMoreResults()) {
+          break
         }
-      } catch (error) {
-        throw new QueryFailedError(
-          `Failed to sample documents using 'top' strategy: ${(error as Error).message}`,
-          createErrorContext({
-            component: 'document-sampler',
-            metadata: {
-              strategy: 'top',
-              sampleSize,
-              originalError: (error as Error).message,
-            },
-          }),
-        )
+      }
+
+      return {
+        documents,
+        ruConsumed,
+        status: 'completed' as const,
       }
     },
     {
@@ -178,10 +198,25 @@ async function topSampleImpl(
 
 /**
  * Implementation for 'random' sampling strategy
- * Oversamples and shuffles for better randomness
  *
- * @param options - Sampling options
- * @returns Sample result
+ * Fetches 3x the required sample size (ordered by _ts DESC for variety) and then
+ * randomly shuffles the results to select the final sample. Provides better
+ * distribution than 'top' but costs more RUs.
+ *
+ * @param options - Sampling options including container, sampleSize, maxRU, etc.
+ * @returns Promise resolving to sample result with shuffled documents
+ *
+ * @example
+ * ```ts
+ * const result = await randomSampleImpl({
+ *   container,
+ *   sampleSize: 100,
+ *   maxRU: 3000
+ * })
+ * // Fetches 300 documents, shuffles, returns random 100
+ * ```
+ *
+ * @internal
  */
 async function randomSampleImpl(
   options: SampleDocumentsOptions,
@@ -197,55 +232,41 @@ async function randomSampleImpl(
       let ruConsumed = 0
       const documents: CosmosDBDocument[] = []
 
-      try {
-        const queryIterator = container.items.query(query)
+      const queryIterator = container.items.query(query)
 
-        while (queryIterator.hasMoreResults()) {
-          const { resources, requestCharge = 0 } = await queryIterator.fetchNext()
-          ruConsumed += requestCharge
+      while (queryIterator.hasMoreResults()) {
+        const { resources, requestCharge = 0 } = await queryIterator.fetchNext()
+        ruConsumed += requestCharge
 
-          if (resources && resources.length > 0) {
-            documents.push(...resources)
-          }
+        if (resources && resources.length > 0) {
+          documents.push(...resources)
+        }
 
-          if (onProgress) {
-            onProgress(Math.min(documents.length, sampleSize), sampleSize, ruConsumed)
-          }
+        if (onProgress) {
+          onProgress(Math.min(documents.length, sampleSize), sampleSize, ruConsumed)
+        }
 
-          if (ruConsumed >= maxRU) {
-            const shuffled = shuffleArray([...documents])
-            return {
-              documents: shuffled.slice(0, sampleSize),
-              ruConsumed,
-              status: 'budget_exceeded' as const,
-            }
-          }
-
-          if (!queryIterator.hasMoreResults()) {
-            break
+        if (ruConsumed >= maxRU) {
+          const shuffled = shuffleArray([...documents])
+          return {
+            documents: shuffled.slice(0, sampleSize),
+            ruConsumed,
+            status: 'budget_exceeded' as const,
           }
         }
 
-        const shuffled = shuffleArray([...documents])
-        const sampled = shuffled.slice(0, Math.min(sampleSize, shuffled.length))
-
-        return {
-          documents: sampled,
-          ruConsumed,
-          status: 'completed' as const,
+        if (!queryIterator.hasMoreResults()) {
+          break
         }
-      } catch (error) {
-        throw new QueryFailedError(
-          `Failed to sample documents using 'random' strategy: ${(error as Error).message}`,
-          createErrorContext({
-            component: 'document-sampler',
-            metadata: {
-              strategy: 'random',
-              sampleSize,
-              originalError: (error as Error).message,
-            },
-          }),
-        )
+      }
+
+      const shuffled = shuffleArray([...documents])
+      const sampled = shuffled.slice(0, Math.min(sampleSize, shuffled.length))
+
+      return {
+        documents: sampled,
+        ruConsumed,
+        status: 'completed' as const,
       }
     },
     {
@@ -258,10 +279,26 @@ async function randomSampleImpl(
 
 /**
  * Implementation for 'partition' sampling strategy
- * Samples evenly across all partition key values
  *
- * @param options - Sampling options
- * @returns Sample result
+ * Discovers all unique partition keys and samples evenly across them. This is the
+ * RECOMMENDED strategy as it ensures representation across all partitions, which
+ * often correlates with different tenants, users, or data categories.
+ *
+ * @param options - Sampling options including container, sampleSize, partitionKeyPath, etc.
+ * @returns Promise resolving to sample result with partition coverage stats
+ *
+ * @example
+ * ```ts
+ * const result = await partitionAwareSampleImpl({
+ *   container,
+ *   sampleSize: 100,
+ *   partitionKeyPath: '/tenantId'
+ * })
+ * // Samples ~equal number from each partition
+ * // result.partitionsCovered shows how many partitions were found
+ * ```
+ *
+ * @internal
  */
 async function partitionAwareSampleImpl(
   options: SampleDocumentsOptions,
@@ -269,141 +306,129 @@ async function partitionAwareSampleImpl(
   const {
     container,
     sampleSize,
-    partitionKeyPath = '/partition',
+    partitionKeyPath: providedPartitionKeyPath,
     maxRU = Infinity,
     onProgress,
     retry,
   } = options
 
+  // Auto-detect partition key if not provided
+  const partitionKeyPath = providedPartitionKeyPath || await getPartitionKeyPath({ container })
+
   return await withRetry(
     async () => {
       let ruConsumed = 0
 
-      try {
-        const partitionKeyField = partitionKeyPath.replace(/^\//, '')
-        const distinctQuery = `SELECT DISTINCT VALUE c.${partitionKeyField} FROM c`
+      const partitionKeyField = partitionKeyPath.replace(/^\//, '')
+      const distinctQuery = `SELECT DISTINCT VALUE c.${partitionKeyField} FROM c`
 
-        const partitionKeys: string[] = []
-        const distinctIterator = container.items.query(distinctQuery)
+      const partitionKeys: string[] = []
+      const distinctIterator = container.items.query(distinctQuery)
 
-        while (distinctIterator.hasMoreResults()) {
-          const { resources, requestCharge = 0 } = await distinctIterator.fetchNext()
-          ruConsumed += requestCharge
+      while (distinctIterator.hasMoreResults()) {
+        const { resources, requestCharge = 0 } = await distinctIterator.fetchNext()
+        ruConsumed += requestCharge
 
-          if (resources && resources.length > 0) {
-            partitionKeys.push(...resources.filter((key): key is string => key !== null && key !== undefined))
-          }
-
-          if (ruConsumed >= maxRU) {
-            return {
-              documents: [],
-              ruConsumed,
-              status: 'budget_exceeded' as const,
-              partitionsCovered: 0,
-            }
-          }
-
-          if (!distinctIterator.hasMoreResults()) {
-            break
-          }
+        if (resources && resources.length > 0) {
+          partitionKeys.push(...resources.filter((key): key is string => key !== null && key !== undefined))
         }
 
-        if (partitionKeys.length === 0) {
-          const fallbackResult = await topSampleImpl(options)
+        if (ruConsumed >= maxRU) {
           return {
-            ...fallbackResult,
+            documents: [],
+            ruConsumed,
+            status: 'budget_exceeded' as const,
             partitionsCovered: 0,
           }
         }
 
-        const samplesPerPartition = Math.max(1, Math.floor(sampleSize / partitionKeys.length))
-        const remainingSamples = sampleSize - (samplesPerPartition * partitionKeys.length)
-
-        const partitionStates: PartitionSampleState[] = partitionKeys.map((key, index) => ({
-          partitionKey: key,
-          documents: [],
-          samplesNeeded: samplesPerPartition + (index < remainingSamples ? 1 : 0),
-        }))
-
-        const samplePartition = async (state: PartitionSampleState): Promise<{
-          documents: CosmosDBDocument[]
-          ruConsumed: number
-        }> => {
-          return await withRetry(
-            async () => {
-              const query = `SELECT TOP ${state.samplesNeeded} * FROM c WHERE c.${partitionKeyField} = @partitionKey`
-              const querySpec = {
-                query,
-                parameters: [{ name: '@partitionKey', value: state.partitionKey }],
-              }
-
-              let partitionRU = 0
-              const docs: CosmosDBDocument[] = []
-              const iterator = container.items.query(querySpec)
-
-              while (iterator.hasMoreResults()) {
-                const { resources, requestCharge = 0 } = await iterator.fetchNext()
-                partitionRU += requestCharge
-
-                if (resources && resources.length > 0) {
-                  docs.push(...resources)
-                }
-
-                if (!iterator.hasMoreResults()) {
-                  break
-                }
-              }
-
-              return { documents: docs, ruConsumed: partitionRU }
-            },
-            {
-              config: retry,
-              component: 'document-sampler',
-              operation: 'partition-query',
-            },
-          )
+        if (!distinctIterator.hasMoreResults()) {
+          break
         }
+      }
 
-        const partitionResults = await Promise.all(partitionStates.map(samplePartition))
-
-        const allDocuments: CosmosDBDocument[] = []
-        for (const result of partitionResults) {
-          ruConsumed += result.ruConsumed
-          allDocuments.push(...result.documents)
-
-          if (onProgress) {
-            onProgress(allDocuments.length, sampleSize, ruConsumed)
-          }
-
-          if (ruConsumed >= maxRU) {
-            return {
-              documents: allDocuments.slice(0, sampleSize),
-              ruConsumed,
-              partitionsCovered: partitionKeys.length,
-              status: 'budget_exceeded' as const,
-            }
-          }
-        }
-
+      if (partitionKeys.length === 0) {
+        const fallbackResult = await topSampleImpl(options)
         return {
-          documents: allDocuments.slice(0, sampleSize),
-          ruConsumed,
-          partitionsCovered: partitionKeys.length,
-          status: 'completed' as const,
+          ...fallbackResult,
+          partitionsCovered: 0,
         }
-      } catch (error) {
-        throw new QueryFailedError(
-          `Failed to sample documents using 'partition' strategy: ${(error as Error).message}`,
-          createErrorContext({
+      }
+
+      const samplesPerPartition = Math.max(1, Math.floor(sampleSize / partitionKeys.length))
+      const remainingSamples = sampleSize - (samplesPerPartition * partitionKeys.length)
+
+      const partitionStates: PartitionSampleState[] = partitionKeys.map((key, index) => ({
+        partitionKey: key,
+        documents: [],
+        samplesNeeded: samplesPerPartition + (index < remainingSamples ? 1 : 0),
+      }))
+
+      const samplePartition = async (state: PartitionSampleState): Promise<{
+        documents: CosmosDBDocument[]
+        ruConsumed: number
+      }> => {
+        return await withRetry(
+          async () => {
+            const query = `SELECT TOP ${state.samplesNeeded} * FROM c WHERE c.${partitionKeyField} = @partitionKey`
+            const querySpec = {
+              query,
+              parameters: [{ name: '@partitionKey', value: state.partitionKey }],
+            }
+
+            let partitionRU = 0
+            const docs: CosmosDBDocument[] = []
+            const iterator = container.items.query(querySpec)
+
+            while (iterator.hasMoreResults()) {
+              const { resources, requestCharge = 0 } = await iterator.fetchNext()
+              partitionRU += requestCharge
+
+              if (resources && resources.length > 0) {
+                docs.push(...resources)
+              }
+
+              if (!iterator.hasMoreResults()) {
+                break
+              }
+            }
+
+            return { documents: docs, ruConsumed: partitionRU }
+          },
+          {
+            config: retry,
             component: 'document-sampler',
-            metadata: {
-              strategy: 'partition',
-              sampleSize,
-              partitionKeyPath,
-              originalError: (error as Error).message,
-            },
-          }),
+            operation: 'partition-query',
+          },
         )
+      }
+
+      const partitionResults = await Promise.all(partitionStates.map(samplePartition))
+
+      const allDocuments: CosmosDBDocument[] = []
+      for (const result of partitionResults) {
+        ruConsumed += result.ruConsumed
+        allDocuments.push(...result.documents)
+
+        if (onProgress) {
+          onProgress(allDocuments.length, sampleSize, ruConsumed)
+        }
+
+        if (ruConsumed >= maxRU) {
+          return {
+            documents: allDocuments.slice(0, sampleSize),
+            ruConsumed,
+            partitionsCovered: partitionKeys.length,
+            status: 'budget_exceeded' as const,
+          }
+        }
+      }
+
+      return {
+        documents: allDocuments.slice(0, sampleSize),
+        ruConsumed,
+        partitionsCovered: partitionKeys.length,
+        status: 'completed' as const,
       }
     },
     {
@@ -416,10 +441,26 @@ async function partitionAwareSampleImpl(
 
 /**
  * Implementation for 'schema' sampling strategy
- * Discovers and prioritizes different document structures
  *
- * @param options - Sampling options
- * @returns Sample result
+ * Scans documents to discover different schema structures (based on top-level keys)
+ * and collects a minimum number of examples for each variant. Useful when you want
+ * to ensure coverage of all document types in a heterogeneous collection.
+ *
+ * @param options - Sampling options including container, sampleSize, minSchemaVariants, etc.
+ * @returns Promise resolving to sample result with schema variant count
+ *
+ * @example
+ * ```ts
+ * const result = await schemaAwareSampleImpl({
+ *   container,
+ *   sampleSize: 100,
+ *   minSchemaVariants: 5
+ * })
+ * // Ensures at least 5 examples of each unique schema structure
+ * // result.schemaVariants shows how many different structures found
+ * ```
+ *
+ * @internal
  */
 async function schemaAwareSampleImpl(
   options: SampleDocumentsOptions,
@@ -439,77 +480,62 @@ async function schemaAwareSampleImpl(
       const schemaMap = new Map<SchemaSignature, CosmosDBDocument[]>()
       const allDocuments: CosmosDBDocument[] = []
 
-      try {
-        const query = 'SELECT * FROM c'
-        const queryIterator = container.items.query(query)
+      const query = 'SELECT * FROM c'
+      const queryIterator = container.items.query(query)
 
-        while (queryIterator.hasMoreResults()) {
-          const { resources, requestCharge = 0 } = await queryIterator.fetchNext()
-          ruConsumed += requestCharge
+      while (queryIterator.hasMoreResults()) {
+        const { resources, requestCharge = 0 } = await queryIterator.fetchNext()
+        ruConsumed += requestCharge
 
-          if (resources && resources.length > 0) {
-            for (const doc of resources) {
-              const signature = createSchemaSignature(doc)
+        if (resources && resources.length > 0) {
+          for (const doc of resources) {
+            const signature = createSchemaSignature(doc)
 
-              if (!schemaMap.has(signature)) {
-                schemaMap.set(signature, [])
-              }
+            if (!schemaMap.has(signature)) {
+              schemaMap.set(signature, [])
+            }
 
-              const variantDocs = schemaMap.get(signature)!
-              if (variantDocs.length < minSchemaVariants) {
-                variantDocs.push(doc)
-                allDocuments.push(doc)
-              }
+            const variantDocs = schemaMap.get(signature)!
+            if (variantDocs.length < minSchemaVariants) {
+              variantDocs.push(doc)
+              allDocuments.push(doc)
+            }
 
-              if (allDocuments.length >= sampleSize) {
-                return {
-                  documents: allDocuments,
-                  ruConsumed,
-                  schemaVariants: schemaMap.size,
-                  status: 'completed' as const,
-                }
+            if (allDocuments.length >= sampleSize) {
+              return {
+                documents: allDocuments,
+                ruConsumed,
+                schemaVariants: schemaMap.size,
+                status: 'completed' as const,
               }
             }
           }
+        }
 
-          if (onProgress) {
-            onProgress(allDocuments.length, sampleSize, ruConsumed)
-          }
+        if (onProgress) {
+          onProgress(allDocuments.length, sampleSize, ruConsumed)
+        }
 
-          if (ruConsumed >= maxRU) {
-            return {
-              documents: allDocuments,
-              ruConsumed,
-              schemaVariants: schemaMap.size,
-              status: 'budget_exceeded' as const,
-            }
-          }
-
-          if (!queryIterator.hasMoreResults()) {
-            break
+        if (ruConsumed >= maxRU) {
+          return {
+            documents: allDocuments,
+            ruConsumed,
+            schemaVariants: schemaMap.size,
+            status: 'budget_exceeded' as const,
           }
         }
 
-        const status: 'completed' | 'partial' = allDocuments.length >= sampleSize ? 'completed' : 'partial'
-        return {
-          documents: allDocuments,
-          ruConsumed,
-          schemaVariants: schemaMap.size,
-          status,
+        if (!queryIterator.hasMoreResults()) {
+          break
         }
-      } catch (error) {
-        throw new QueryFailedError(
-          `Failed to sample documents using 'schema' strategy: ${(error as Error).message}`,
-          createErrorContext({
-            component: 'document-sampler',
-            metadata: {
-              strategy: 'schema',
-              sampleSize,
-              minSchemaVariants,
-              originalError: (error as Error).message,
-            },
-          }),
-        )
+      }
+
+      const status: 'completed' | 'partial' = allDocuments.length >= sampleSize ? 'completed' : 'partial'
+      return {
+        documents: allDocuments,
+        ruConsumed,
+        schemaVariants: schemaMap.size,
+        status,
       }
     },
     {
@@ -522,10 +548,24 @@ async function schemaAwareSampleImpl(
 
 /**
  * Create a schema signature from a document
- * Signature is based on sorted top-level keys
  *
- * @param doc - Document to create signature for
- * @returns Schema signature string
+ * Generates a unique signature based on the sorted top-level field names of a document.
+ * Documents with the same signature have the same structure (same fields), though values
+ * may differ. System fields (starting with '_') are excluded.
+ *
+ * @param doc - Document to analyze
+ * @returns Schema signature as pipe-delimited sorted field names
+ *
+ * @example
+ * ```ts
+ * createSchemaSignature({ id: '1', name: 'Alice', age: 30 })
+ * // Returns: 'age|id|name'
+ *
+ * createSchemaSignature({ id: '2', name: 'Bob' })
+ * // Returns: 'id|name' (different signature - no age field)
+ * ```
+ *
+ * @internal
  */
 function createSchemaSignature(doc: CosmosDBDocument): SchemaSignature {
   const keys = Object.keys(doc).filter((key) => !key.startsWith('_')).sort()
@@ -535,8 +575,21 @@ function createSchemaSignature(doc: CosmosDBDocument): SchemaSignature {
 /**
  * Shuffle array using Fisher-Yates algorithm
  *
+ * Creates a new shuffled copy of an array without modifying the original.
+ * Uses the Fisher-Yates (Knuth) shuffle for unbiased randomization.
+ *
  * @param array - Array to shuffle
- * @returns Shuffled array
+ * @returns New array with elements in random order
+ *
+ * @example
+ * ```ts
+ * const numbers = [1, 2, 3, 4, 5]
+ * const shuffled = shuffleArray(numbers)
+ * // shuffled might be [3, 1, 5, 2, 4]
+ * // numbers is unchanged: [1, 2, 3, 4, 5]
+ * ```
+ *
+ * @internal
  */
 function shuffleArray<T>(array: T[]): T[] {
   const result = [...array]
@@ -608,7 +661,11 @@ export async function sampleDocuments(
         `Unknown sampling strategy: ${strategy}`,
         createErrorContext({
           component: 'document-sampler',
-          metadata: { strategy },
+          metadata: {
+            providedStrategy: strategy,
+            validStrategies: ['top', 'random', 'partition', 'schema'],
+            sampleSize: options.sampleSize,
+          },
         }),
       )
   }

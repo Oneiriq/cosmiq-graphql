@@ -43,6 +43,7 @@ export type {
   OutputConfig,
   PartitionKeyConfig,
   ProgressCallback,
+  ProgressEvent,
   ResolverFn,
   Resolvers,
   SchemaGenerationOptions,

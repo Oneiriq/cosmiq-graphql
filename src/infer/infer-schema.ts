@@ -6,6 +6,7 @@
 
 import type { InferredSchema, TypeSystemConfig } from '../types/infer.ts'
 import type { CosmosDBDocument } from '../types/cosmosdb.ts'
+import type { ProgressCallback } from '../types/handler.ts'
 import { createErrorContext, ValidationError } from '../errors/mod.ts'
 import { inferJSONStructure } from './infer-json.ts'
 import { createTypeDefinitions } from './type-builder.ts'
@@ -20,6 +21,8 @@ export type InferSchemaOptions = {
   typeName: string
   /** Optional type system configuration */
   config?: Partial<TypeSystemConfig>
+  /** Optional progress callback */
+  onProgress?: ProgressCallback
 }
 
 /**
@@ -57,16 +60,31 @@ export function inferSchema({
   documents,
   typeName,
   config,
+  onProgress,
 }: InferSchemaOptions): InferredSchema {
   if (documents.length === 0) {
     throw new ValidationError(
       'Cannot infer schema from empty document array',
       createErrorContext({
         component: 'infer-schema',
-        metadata: { typeName, documentsCount: 0 },
+        metadata: {
+          typeName,
+          documentsCount: 0,
+          config: {
+            requiredThreshold: config?.requiredThreshold,
+            conflictResolution: config?.conflictResolution,
+          },
+        },
       }),
     )
   }
+
+  // Report inference started
+  onProgress?.({
+    stage: 'inference_started',
+    message: `Starting schema inference for ${documents.length} documents`,
+    metadata: { documentsCount: documents.length, typeName },
+  })
 
   // 1. Analyze JSON structure
   const structure = inferJSONStructure(documents, config)
@@ -78,7 +96,7 @@ export function inferSchema({
     config,
   })
 
-  return {
+  const result: InferredSchema = {
     rootType: types.root,
     nestedTypes: types.nested,
     stats: {
@@ -89,4 +107,18 @@ export function inferSchema({
       nestedTypesCreated: types.nested.length,
     },
   }
+
+  // Report inference complete
+  onProgress?.({
+    stage: 'inference_complete',
+    progress: 100,
+    message: `Schema inference complete: ${result.stats.typesGenerated} types generated`,
+    metadata: {
+      typesGenerated: result.stats.typesGenerated,
+      fieldsAnalyzed: result.stats.fieldsAnalyzed,
+      conflictsResolved: result.stats.conflictsResolved,
+    },
+  })
+
+  return result
 }

@@ -52,7 +52,13 @@ export function inferJSONStructure(
       'Cannot infer structure from empty document array',
       createErrorContext({
         component: 'infer-json',
-        metadata: { documentsLength: documents.length },
+        metadata: {
+          documentsLength: documents.length,
+          config: {
+            requiredThreshold: _config?.requiredThreshold,
+            conflictResolution: _config?.conflictResolution,
+          },
+        },
       }),
     )
   }
@@ -80,6 +86,23 @@ export function inferJSONStructure(
 
 /**
  * Analyze a single document and update field information
+ *
+ * Iterates through all properties of a document and records information about each field,
+ * including their types, frequencies, and nested structures. This function is called once
+ * per document during the inference process.
+ *
+ * @param doc - Document object to analyze
+ * @param fields - Map to store/update field information across all documents
+ * @param totalDocs - Total number of documents being analyzed (for frequency calculations)
+ *
+ * @example
+ * ```ts
+ * const fields = new Map()
+ * analyzeDocument({ id: '1', name: 'Alice' }, fields, 100)
+ * // fields now contains entries for 'id' and 'name'
+ * ```
+ *
+ * @internal
  */
 function analyzeDocument(
   doc: Record<string, unknown>,
@@ -93,7 +116,25 @@ function analyzeDocument(
 
 /**
  * Record field information during analysis
- * Tracks nested objects for later type generation
+ *
+ * Updates or creates a FieldInfo entry for a single field. Handles type tracking,
+ * frequency counting, array element analysis, and nested object discovery.
+ * This is the core function that builds up the schema structure.
+ *
+ * @param fields - Map to store/update field information
+ * @param key - Field name being recorded
+ * @param value - Field value from the current document
+ * @param totalDocs - Total number of documents (used for nested analysis)
+ *
+ * @example
+ * ```ts
+ * const fields = new Map()
+ * recordField({ fields, key: 'age', value: 30, totalDocs: 100 })
+ * recordField({ fields, key: 'age', value: 25, totalDocs: 100 })
+ * // fields.get('age') now has frequency: 2, types: Set(['number']), numberValues: [30, 25]
+ * ```
+ *
+ * @internal
  */
 function recordField({
   fields,
@@ -112,6 +153,12 @@ function recordField({
   if (existing) {
     existing.types.add(valueType)
     existing.frequency++
+
+    // Collect number values for inference
+    if (typeof value === 'number' && !Number.isNaN(value)) {
+      existing.numberValues = existing.numberValues || []
+      existing.numberValues.push(value)
+    }
 
     if (Array.isArray(value) && value.length > 0) {
       existing.isArray = true
@@ -137,6 +184,11 @@ function recordField({
       isArray: Array.isArray(value),
     }
 
+    // Collect number values for inference
+    if (typeof value === 'number' && !Number.isNaN(value)) {
+      fieldInfo.numberValues = [value]
+    }
+
     if (Array.isArray(value) && value.length > 0) {
       fieldInfo.arrayElementTypes = new Set()
       for (const elem of value) {
@@ -156,6 +208,22 @@ function recordField({
 
 /**
  * Detect the primitive type of a value
+ *
+ * Examines a value and returns its primitive type classification for schema inference.
+ * Handles null, arrays, and all JavaScript primitive types.
+ *
+ * @param value - Value to detect type for
+ * @returns Primitive type name (null, array, string, number, boolean, object, or fallback to string)
+ *
+ * @example
+ * ```ts
+ * detectType(null) // 'null'
+ * detectType([1, 2, 3]) // 'array'
+ * detectType(42) // 'number'
+ * detectType({ nested: true }) // 'object'
+ * ```
+ *
+ * @internal
  */
 function detectType(value: unknown): PrimitiveType {
   if (value === null) return 'null'

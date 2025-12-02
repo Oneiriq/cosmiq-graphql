@@ -125,21 +125,54 @@ export async function uploadToHive(
   if (!config.registryUrl) {
     throw new ConfigurationError(
       'registryUrl is required for Hive adapter',
-      createErrorContext({ component: 'uploadToHive' }),
+      createErrorContext({
+        component: 'uploadToHive',
+        metadata: {
+          providedConfig: {
+            hasRegistryUrl: !!config.registryUrl,
+            hasServiceName: !!config.serviceName,
+            hasToken: !!config.token,
+            database: config.database,
+            container: config.container,
+          },
+        },
+      }),
     )
   }
 
   if (!config.serviceName) {
     throw new ConfigurationError(
       'serviceName is required for Hive adapter',
-      createErrorContext({ component: 'uploadToHive' }),
+      createErrorContext({
+        component: 'uploadToHive',
+        metadata: {
+          providedConfig: {
+            registryUrl: config.registryUrl ? '[redacted]' : undefined,
+            hasServiceName: !!config.serviceName,
+            hasToken: !!config.token,
+            database: config.database,
+            container: config.container,
+          },
+        },
+      }),
     )
   }
 
   if (!config.token) {
     throw new ConfigurationError(
       'token is required for Hive adapter',
-      createErrorContext({ component: 'uploadToHive' }),
+      createErrorContext({
+        component: 'uploadToHive',
+        metadata: {
+          providedConfig: {
+            registryUrl: config.registryUrl ? '[redacted]' : undefined,
+            serviceName: config.serviceName,
+            hasToken: !!config.token,
+            database: config.database,
+            container: config.container,
+          },
+        },
+      }),
     )
   }
 
@@ -255,7 +288,16 @@ async function uploadSchemaToHive(
     const errorText = await response.text()
     throw new ValidationError(
       `Hive upload failed: ${response.status} ${response.statusText} - ${errorText}`,
-      createErrorContext({ component: 'uploadSchemaToHive' }),
+      createErrorContext({
+        component: 'uploadSchemaToHive',
+        metadata: {
+          httpStatus: response.status,
+          httpStatusText: response.statusText,
+          registryUrl: config.registryUrl ? '[redacted]' : undefined,
+          serviceName: config.serviceName,
+          hasCommitInfo: !!config.commit,
+        },
+      }),
     )
   }
 

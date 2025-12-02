@@ -23,6 +23,48 @@ export type TypeDefinitions = {
 }
 
 /**
+ * Type name collision tracker
+ */
+class TypeNameRegistry {
+  private typeNames = new Map<string, number>()
+
+  /**
+   * Register a type name and get the resolved name (with collision suffix if needed)
+   */
+  register(name: string): string {
+    const count = this.typeNames.get(name) || 0
+
+    if (count === 0) {
+      this.typeNames.set(name, 1)
+      return name
+    }
+
+    // Collision detected - append numeric suffix
+    const resolvedName = `${name}_${count + 1}`
+    this.typeNames.set(name, count + 1)
+
+    // Register the new name as well to prevent future collisions
+    this.typeNames.set(resolvedName, 1)
+
+    return resolvedName
+  }
+
+  /**
+   * Check if a type name has been used
+   */
+  has(name: string): boolean {
+    return this.typeNames.has(name)
+  }
+
+  /**
+   * Reset the registry
+   */
+  clear(): void {
+    this.typeNames.clear()
+  }
+}
+
+/**
  * Create GraphQL type definitions from inferred JSON structure
  *
  * @param structure - The inferred JSON structure
@@ -42,14 +84,17 @@ export function createTypeDefinitions({
   const rootFields: GraphQLFieldDef[] = []
   const nestedTypes: GraphQLTypeDef[] = []
 
+  // Create a registry to track type names and prevent collisions
+  const registry = new TypeNameRegistry()
+
+  // Register the root type name
+  registry.register(typeName)
+
   // Calculate total documents from field frequencies
   let totalDocuments = 0
   for (const fieldInfo of structure.fields.values()) {
     totalDocuments = Math.max(totalDocuments, fieldInfo.frequency)
   }
-
-  // Collect number values for inference
-  const numberValues: number[] = []
 
   // Infer nested types
   const nestedTypeDefinitions = inferNestedTypes({
@@ -59,9 +104,12 @@ export function createTypeDefinitions({
     currentDepth: 0,
   })
 
-  // Convert nested type definitions to GraphQL types
+  // Convert nested type definitions to GraphQL types with collision detection
   for (const nestedTypeDef of nestedTypeDefinitions) {
     const nestedFields: GraphQLFieldDef[] = []
+
+    // Register type name and get resolved name (with suffix if collision)
+    const resolvedName = registry.register(nestedTypeDef.name)
 
     for (const [fieldName, fieldInfo] of nestedTypeDef.fields.entries()) {
       const field = createFieldDefinition({
@@ -69,14 +117,14 @@ export function createTypeDefinitions({
         fieldInfo,
         totalDocuments,
         config,
-        parentTypeName: nestedTypeDef.name,
-        numberValues,
+        parentTypeName: resolvedName,
+        registry,
       })
       nestedFields.push(field)
     }
 
     nestedTypes.push({
-      name: nestedTypeDef.name,
+      name: resolvedName,
       fields: nestedFields,
       isNested: true,
       parentType: nestedTypeDef.parentType,
@@ -91,7 +139,7 @@ export function createTypeDefinitions({
       totalDocuments,
       config,
       parentTypeName: typeName,
-      numberValues,
+      registry,
     })
     rootFields.push(field)
   }
@@ -110,6 +158,32 @@ export function createTypeDefinitions({
 
 /**
  * Create a GraphQL field definition from field information
+ *
+ * Converts a FieldInfo object into a GraphQLFieldDef with proper type resolution,
+ * nullability determination, and array handling. Handles nested objects, type conflicts,
+ * ID field detection, and type name collision resolution.
+ *
+ * @param fieldName - Name of the field
+ * @param fieldInfo - Field information from document analysis
+ * @param totalDocuments - Total number of documents analyzed (for nullability)
+ * @param config - Optional type system configuration
+ * @param parentTypeName - Name of the parent type (for nested type naming)
+ * @param registry - Optional type name registry for collision detection
+ * @returns GraphQL field definition with resolved type
+ *
+ * @example
+ * ```ts
+ * const field = createFieldDefinition({
+ *   fieldName: 'age',
+ *   fieldInfo: { types: Set(['number']), frequency: 95, numberValues: [25, 30] },
+ *   totalDocuments: 100,
+ *   config: { requiredThreshold: 90 },
+ *   parentTypeName: 'User'
+ * })
+ * // Returns: { name: 'age', type: 'Int!', required: true, isArray: false }
+ * ```
+ *
+ * @internal
  */
 function createFieldDefinition({
   fieldName,
@@ -117,14 +191,14 @@ function createFieldDefinition({
   totalDocuments,
   config,
   parentTypeName,
-  numberValues,
+  registry,
 }: {
   fieldName: string
   fieldInfo: FieldInfo
   totalDocuments: number
   config?: Partial<TypeSystemConfig>
   parentTypeName: string
-  numberValues: number[]
+  registry?: TypeNameRegistry
 }): GraphQLFieldDef {
   // Determine if field is required or optional
   const nullability = determineNullability({
@@ -140,10 +214,15 @@ function createFieldDefinition({
 
   // Handle nested objects
   if (fieldInfo.nestedFields && fieldInfo.nestedFields.size > 0) {
-    customTypeName = generateTypeName({
+    const baseName = generateTypeName({
       parentType: parentTypeName,
       fieldName,
+      config,
+      depth: 0, // Depth is handled during inferNestedTypes
     })
+
+    // Use registry to resolve collisions if provided
+    customTypeName = registry ? registry.register(baseName) : baseName
     graphqlType = customTypeName
   } else if (
     fieldInfo.types.size === 1 ||
@@ -154,7 +233,7 @@ function createFieldDefinition({
       graphqlType = primitiveToGraphQL({
         primitive: nonNullTypes[0],
         config,
-        numberValues,
+        fieldInfo,
       })
     }
   } else if (fieldInfo.types.size > 1) {
@@ -196,22 +275,45 @@ function createFieldDefinition({
 
 /**
  * Convert primitive type to GraphQL scalar type
+ *
+ * Maps JavaScript primitive types to their GraphQL scalar equivalents.
+ * For numbers, uses the collected values to determine Int vs Float via number inference.
+ * For objects without structure, defaults to generic JSON scalar.
+ *
+ * @param primitive - Primitive type identifier (string, number, boolean, object, array)
+ * @param config - Optional type system configuration (for number inference)
+ * @param fieldInfo - Field information (contains numberValues for Int/Float inference)
+ * @returns GraphQL scalar type name (String, Int, Float, Boolean, JSON)
+ *
+ * @example
+ * ```ts
+ * primitiveToGraphQL({
+ *   primitive: 'number',
+ *   fieldInfo: { numberValues: [1, 2, 3] },
+ *   config: { numberInference: 'strict' }
+ * })
+ * // Returns: 'Int' (all values are integers)
+ * ```
+ *
+ * @internal
  */
 function primitiveToGraphQL({
   primitive,
   config,
-  numberValues,
+  fieldInfo,
 }: {
   primitive: string
   config?: Partial<TypeSystemConfig>
-  numberValues: number[]
+  fieldInfo: FieldInfo
 }): string {
   switch (primitive) {
     case 'string':
       return 'String'
-    case 'number':
-      // Use number inference to determine Int vs Float
-      return inferNumberType({ values: numberValues, config })
+    case 'number': {
+      // Use collected number values to determine Int vs Float
+      const values = fieldInfo.numberValues || []
+      return inferNumberType({ values, config })
+    }
     case 'boolean':
       return 'Boolean'
     case 'object':

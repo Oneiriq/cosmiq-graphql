@@ -5,7 +5,7 @@
  */
 
 import type { GraphQLSchema } from 'graphql'
-import type { CosmosDBSubgraphConfig, SubgraphHandler } from '../types/handler.ts'
+import type { CosmosDBSubgraphConfig, ProgressCallback, SubgraphHandler } from '../types/handler.ts'
 import { buildCoreSchema } from './core.ts'
 import { ConfigurationError, createErrorContext } from '../errors/mod.ts'
 import { validateRequiredString } from '../utils/validation.ts'
@@ -23,6 +23,7 @@ import { validateRequiredString } from '../utils/validation.ts'
  *
  * @param name - Name of the subgraph (used by GraphQL Mesh)
  * @param config - Configuration for the CosmosDB connection and schema generation
+ * @param onProgress - Optional progress callback for monitoring schema generation
  * @returns A GraphQL Mesh-compatible subgraph handler function
  *
  * @example Basic usage
@@ -53,6 +54,7 @@ import { validateRequiredString } from '../utils/validation.ts'
 export function loadCosmosDBSubgraph(
   name: string,
   config: CosmosDBSubgraphConfig,
+  onProgress?: ProgressCallback,
 ): SubgraphHandler {
   // Validate inputs
   const subgraphName = validateRequiredString(
@@ -64,7 +66,18 @@ export function loadCosmosDBSubgraph(
   if (!config.connectionString && !config.endpoint) {
     throw new ConfigurationError(
       'Either connectionString or endpoint must be provided',
-      createErrorContext({ component: 'loadCosmosDBSubgraph' }),
+      createErrorContext({
+        component: 'loadCosmosDBSubgraph',
+        metadata: {
+          providedConfig: {
+            hasConnectionString: !!config.connectionString,
+            hasEndpoint: !!config.endpoint,
+            hasCredential: !!config.credential,
+            database: config.database,
+            container: config.container,
+          },
+        },
+      }),
     )
   }
 
@@ -73,7 +86,7 @@ export function loadCosmosDBSubgraph(
 
   return () => ({
     name: subgraphName,
-    schema$: buildMeshSchema(config),
+    schema$: buildMeshSchema(config, onProgress),
   })
 }
 
@@ -84,10 +97,14 @@ export function loadCosmosDBSubgraph(
  * for Mesh consumption.
  *
  * @param config - CosmosDB subgraph configuration
+ * @param onProgress - Optional progress callback
  * @returns Promise resolving to executable GraphQL schema
  */
-async function buildMeshSchema(config: CosmosDBSubgraphConfig): Promise<GraphQLSchema> {
-  const result = await buildCoreSchema(config)
+async function buildMeshSchema(
+  config: CosmosDBSubgraphConfig,
+  onProgress?: ProgressCallback,
+): Promise<GraphQLSchema> {
+  const result = await buildCoreSchema(config, onProgress)
 
   // Note: GraphQL Mesh manages server lifecycle, so client disposal
   // should ideally happen when Mesh server shuts down.

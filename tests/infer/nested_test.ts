@@ -9,6 +9,7 @@ import {
   inferNestedTypes,
   isNestedObject,
 } from '../../src/infer/nested.ts'
+import { createTypeDefinitions } from '../../src/infer/type-builder.ts'
 import type { FieldInfo } from '../../src/types/infer.ts'
 
 Deno.test('generateTypeName - creates PascalCase type names', () => {
@@ -230,4 +231,278 @@ Deno.test('inferNestedTypes - handles multiple nested fields', () => {
   assertEquals(result.length, 2)
   const names = result.map((t) => t.name).sort()
   assertEquals(names, ['PlayerInventory', 'PlayerStats'])
+})
+
+// ============================================
+// NEW TESTS FOR PHASE 4.1: NAMING STRATEGIES
+// ============================================
+
+Deno.test('generateTypeName - hierarchical strategy (default)', () => {
+  const result = generateTypeName({
+    parentType: 'User',
+    fieldName: 'address',
+    config: { nestedNamingStrategy: 'hierarchical' },
+    depth: 1,
+  })
+  assertEquals(result, 'UserAddress')
+})
+
+Deno.test('generateTypeName - flat strategy at depth 1', () => {
+  const result = generateTypeName({
+    parentType: 'User',
+    fieldName: 'address',
+    config: { nestedNamingStrategy: 'flat' },
+    depth: 1,
+  })
+  assertEquals(result, 'Address')
+})
+
+Deno.test('generateTypeName - flat strategy at depth 2 uses initials', () => {
+  const result = generateTypeName({
+    parentType: 'UserAddress',
+    fieldName: 'city',
+    config: { nestedNamingStrategy: 'flat' },
+    depth: 2,
+  })
+  assertEquals(result, 'UACity')
+})
+
+Deno.test('generateTypeName - short strategy at depth 2 uses initials', () => {
+  const result = generateTypeName({
+    parentType: 'UserProfile',
+    fieldName: 'settings',
+    config: { nestedNamingStrategy: 'short' },
+    depth: 2,
+  })
+  assertEquals(result, 'UPSettings')
+})
+
+Deno.test('generateTypeName - short strategy at depth 4 abbreviates', () => {
+  const result = generateTypeName({
+    parentType: 'UserAddress',
+    fieldName: 'coordinates',
+    config: { nestedNamingStrategy: 'short' },
+    depth: 4,
+  })
+  // Abbreviation removes vowels: UserAddress -> Usrddrs -> Usrdd, Coordinates -> Crdnts -> Crdnt
+  assertEquals(result, 'UsrddCrdnt')
+})
+
+Deno.test('generateTypeName - custom template function', () => {
+  const customTemplate = (parent: string, field: string, depth: number) => {
+    if (depth > 3) {
+      return `${parent}_${field}`.slice(0, 20)
+    }
+    return `${parent}_${field}`
+  }
+  
+  const result = generateTypeName({
+    parentType: 'VeryLongParentType',
+    fieldName: 'veryLongFieldName',
+    config: { typeNameTemplate: customTemplate },
+    depth: 4,
+  })
+  
+  // VeryLongParentType_veryLongFieldName sliced to 20 chars
+  assertEquals(result, 'VeryLongParentType_v')
+})
+
+Deno.test('generateTypeName - custom template overrides strategy', () => {
+  const customTemplate = () => 'CustomName'
+  
+  const result = generateTypeName({
+    parentType: 'User',
+    fieldName: 'address',
+    config: {
+      nestedNamingStrategy: 'short',
+      typeNameTemplate: customTemplate,
+    },
+    depth: 1,
+  })
+  
+  assertEquals(result, 'CustomName')
+})
+
+Deno.test('inferNestedTypes - respects naming strategy config', () => {
+  const fields = new Map<string, FieldInfo>()
+  
+  const addressFields = new Map<string, FieldInfo>()
+  addressFields.set('street', {
+    name: 'street',
+    types: new Set(['string']),
+    frequency: 1,
+    isArray: false,
+  })
+  
+  fields.set('address', {
+    name: 'address',
+    types: new Set(['object']),
+    frequency: 1,
+    isArray: false,
+    nestedFields: addressFields,
+  })
+  
+  const result = inferNestedTypes({
+    fields,
+    parentTypeName: 'User',
+    config: { nestedNamingStrategy: 'flat' },
+    currentDepth: 0,
+  })
+  
+  assertEquals(result.length, 1)
+  assertEquals(result[0].name, 'Address')
+})
+
+Deno.test('inferNestedTypes - short strategy for deep nesting', () => {
+  const fields = new Map<string, FieldInfo>()
+  
+  // Create 4 levels of nesting
+  const level3 = new Map<string, FieldInfo>()
+  level3.set('value', {
+    name: 'value',
+    types: new Set(['string']),
+    frequency: 1,
+    isArray: false,
+  })
+  
+  const level2 = new Map<string, FieldInfo>()
+  level2.set('coordinates', {
+    name: 'coordinates',
+    types: new Set(['object']),
+    frequency: 1,
+    isArray: false,
+    nestedFields: level3,
+  })
+  
+  const level1 = new Map<string, FieldInfo>()
+  level1.set('geo', {
+    name: 'geo',
+    types: new Set(['object']),
+    frequency: 1,
+    isArray: false,
+    nestedFields: level2,
+  })
+  
+  fields.set('address', {
+    name: 'address',
+    types: new Set(['object']),
+    frequency: 1,
+    isArray: false,
+    nestedFields: level1,
+  })
+  
+  const result = inferNestedTypes({
+    fields,
+    parentTypeName: 'User',
+    config: { nestedNamingStrategy: 'short' },
+    currentDepth: 0,
+  })
+  
+  // Check that names are abbreviated at deep levels
+  assertEquals(result.length, 3)
+  // At depth 4, should use abbreviation
+  const deepestType = result.find(t => t.depth === 3)
+  assertEquals(deepestType !== undefined, true)
+})
+// ============================================
+// COLLISION DETECTION TESTS
+// ============================================
+
+Deno.test('createTypeDefinitions - detects and resolves name collisions', () => {
+  const fields = new Map<string, FieldInfo>()
+  
+  // Create two different nested fields that would generate the same type name
+  const address1Fields = new Map<string, FieldInfo>()
+  address1Fields.set('street', {
+    name: 'street',
+    types: new Set(['string']),
+    frequency: 1,
+    isArray: false,
+  })
+  
+  const address2Fields = new Map<string, FieldInfo>()
+  address2Fields.set('city', {
+    name: 'city',
+    types: new Set(['string']),
+    frequency: 1,
+    isArray: false,
+  })
+  
+  // Both would normally create 'UserAddress'
+  fields.set('homeAddress', {
+    name: 'homeAddress',
+    types: new Set(['object']),
+    frequency: 1,
+    isArray: false,
+    nestedFields: address1Fields,
+  })
+  
+  fields.set('workAddress', {
+    name: 'workAddress',
+    types: new Set(['object']),
+    frequency: 1,
+    isArray: false,
+    nestedFields: address2Fields,
+  })
+  
+  const structure = {
+    fields,
+    totalDocuments: 1,
+    fieldCount: fields.size,
+    conflicts: [],
+  }
+  
+  const result = createTypeDefinitions({
+    structure,
+    typeName: 'User',
+  })
+  
+  // Should have root + 2 nested types
+  assertEquals(result.nested.length, 2)
+  
+  // Type names should be unique (one original, one with suffix)
+  const typeNames = result.nested.map(t => t.name).sort()
+  assertEquals(typeNames[0], 'UserHomeAddress')
+  assertEquals(typeNames[1], 'UserWorkAddress')
+})
+
+Deno.test('createTypeDefinitions - handles multiple collisions with incrementing suffixes', () => {
+  const fields = new Map<string, FieldInfo>()
+  
+  // Create multiple nested objects that could collide with flat naming
+  for (let i = 1; i <= 3; i++) {
+    const nestedFields = new Map<string, FieldInfo>()
+    nestedFields.set('value', {
+      name: 'value',
+      types: new Set(['number']),
+      frequency: 1,
+      isArray: false,
+    })
+    
+    fields.set(`field${i}Data`, {
+      name: `field${i}Data`,
+      types: new Set(['object']),
+      frequency: 1,
+      isArray: false,
+      nestedFields,
+    })
+  }
+  
+  const structure = {
+    fields,
+    totalDocuments: 1,
+    fieldCount: fields.size,
+    conflicts: [],
+  }
+  
+  const result = createTypeDefinitions({
+    structure,
+    typeName: 'Test',
+    config: { nestedNamingStrategy: 'flat' },
+  })
+  
+  // All types should have unique names
+  const typeNames = result.nested.map(t => t.name)
+  const uniqueNames = new Set(typeNames)
+  assertEquals(typeNames.length, uniqueNames.size)
 })

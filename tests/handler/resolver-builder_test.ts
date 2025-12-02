@@ -733,7 +733,7 @@ describe('buildResolvers', () => {
       assertExists(resolvers2.Query.orders)
     })
 
-    it('should handle limit of 0', async () => {
+    it('should reject limit of 0', async () => {
       const mockContainer = createMockContainer({
         queryResult: [],
         queryResponse: { continuationToken: undefined },
@@ -744,8 +744,13 @@ describe('buildResolvers', () => {
         typeName: 'File',
       })
 
-      const result = await resolvers.Query.files(null, { limit: 0 }, null) as ConnectionResult<unknown>
-      assertEquals(result.items, [])
+      await assertRejects(
+        async () => {
+          await resolvers.Query.files(null, { limit: 0 }, null)
+        },
+        Error,
+        'Limit must be a positive integer',
+      )
     })
 
     it('should handle large limit values', async () => {

@@ -7,8 +7,14 @@
 import type { Container, FeedResponse, SqlQuerySpec } from '@azure/cosmos'
 import type { ConnectionResult, QueryFilters, Resolvers, RetryConfig } from '../types/handler.ts'
 import type { InferredSchema } from '../types/infer.ts'
-import { createErrorContext, InvalidFieldNameError } from '../errors/mod.ts'
 import { withRetry } from '../utils/retryWrapper.ts'
+import {
+  validateContinuationToken,
+  validateFieldName,
+  validateLimit,
+  validateOrderDirection,
+  validatePartitionKey,
+} from '../utils/validation.ts'
 
 /**
  * Options for building GraphQL resolvers
@@ -59,11 +65,14 @@ export function buildResolvers({
       [typeNameLower]: async (_source, args) => {
         const { id, partitionKey } = args as { id: string; partitionKey?: string }
 
+        // Validate partition key if provided
+        const validatedPartitionKey = validatePartitionKey(partitionKey, 'resolver-builder')
+
         return await withRetry(
           async () => {
             try {
               // Use explicit partition key if provided, otherwise use id as partition key
-              const pk = partitionKey ?? id
+              const pk = validatedPartitionKey ?? id
               const { resource } = await container
                 .item(id, pk)
                 .read()
@@ -118,9 +127,18 @@ export function buildResolvers({
 /**
  * Execute list query with advanced filtering, pagination, and sorting
  *
+ * Builds and executes a parameterized CosmosDB SQL query with support for:
+ * - Partition key filtering for efficiency
+ * - Custom field sorting (ASC/DESC)
+ * - Continuation token-based pagination
+ * - Request Unit budgeting via retry configuration
+ *
+ * All inputs are validated before query construction to prevent injection attacks.
+ *
  * @param container - CosmosDB container instance
  * @param filters - Query filters including limit, partitionKey, continuationToken, orderBy, orderDirection
- * @returns ConnectionResult with items, continuationToken, and hasMore flag
+ * @param retry - Optional retry configuration for handling rate limits
+ * @returns Promise resolving to ConnectionResult with items, continuationToken, and hasMore flag
  *
  * @example
  * ```ts
@@ -132,9 +150,11 @@ export function buildResolvers({
  *     orderBy: 'createdAt',
  *     orderDirection: 'DESC'
  *   }
- * });
- * // Returns paginated list of items with continuation token
+ * })
+ * // Returns: { items: [...], continuationToken: '...', hasMore: true }
  * ```
+ *
+ * @internal
  */
 async function executeListQuery({
   container,
@@ -147,30 +167,34 @@ async function executeListQuery({
 }): Promise<ConnectionResult<unknown>> {
   return await withRetry(
     async () => {
-      const {
-        limit = 100,
-        partitionKey,
-        continuationToken,
-        orderBy,
-        orderDirection = 'ASC',
-      } = filters
+      // Validate all input parameters
+      const validatedLimit = validateLimit(filters.limit, 'resolver-builder')
+      const validatedPartitionKey = validatePartitionKey(filters.partitionKey, 'resolver-builder')
+      const validatedContinuationToken = validateContinuationToken(
+        filters.continuationToken,
+        'resolver-builder',
+      )
+      const validatedOrderBy = validateFieldName(filters.orderBy, 'resolver-builder')
+      const validatedOrderDirection = validateOrderDirection(
+        filters.orderDirection,
+        'resolver-builder',
+      )
 
       // Build query with filtering and sorting
       let querySpec: string | SqlQuerySpec = 'SELECT * FROM c'
 
       // Build parameterized query if partition key is used
-      if (partitionKey) {
+      if (validatedPartitionKey) {
         querySpec = {
           query: 'SELECT * FROM c WHERE c.partitionKey = @partitionKey',
-          parameters: [{ name: '@partitionKey', value: partitionKey }],
+          parameters: [{ name: '@partitionKey', value: validatedPartitionKey }],
         }
       }
 
       // Add sorting to query string
-      if (orderBy) {
-        const validatedField = validateFieldName(orderBy)
+      if (validatedOrderBy) {
         const baseQuery = typeof querySpec === 'string' ? querySpec : querySpec.query
-        const sortedQuery = `${baseQuery} ORDER BY c.${validatedField} ${orderDirection}`
+        const sortedQuery = `${baseQuery} ORDER BY c.${validatedOrderBy} ${validatedOrderDirection}`
 
         if (typeof querySpec === 'string') {
           querySpec = sortedQuery
@@ -181,8 +205,8 @@ async function executeListQuery({
 
       // Execute query with pagination
       const queryIterator = container.items.query(querySpec, {
-        maxItemCount: limit,
-        continuationToken: continuationToken,
+        maxItemCount: validatedLimit,
+        continuationToken: validatedContinuationToken,
       })
 
       const response: FeedResponse<unknown> = await queryIterator.fetchNext()
@@ -202,40 +226,23 @@ async function executeListQuery({
 }
 
 /**
- * Validate field name to prevent SQL injection
- * Only allows alphanumeric characters, underscores, and hyphens
- *
- * @param fieldName - Field name to validate
- * @returns Validated field name
- * @throws InvalidFieldNameError if field name is invalid
- *
- * @example
- * ```ts
- * const validField = validateFieldName('createdAt');
- * // Returns 'createdAt'
- */
-function validateFieldName(fieldName: string): string {
-  const validPattern = /^[a-zA-Z0-9_-]+$/
-  if (!validPattern.test(fieldName)) {
-    throw new InvalidFieldNameError(
-      `Invalid field name: "${fieldName}". Only alphanumeric characters, underscores, and hyphens are allowed.`,
-      createErrorContext({ component: 'resolver-builder' }),
-    )
-  }
-  return fieldName
-}
-
-/**
  * Add field-level resolvers for nested object types
  *
- * @param resolvers - Resolvers object to augment
- * @param schema - Inferred schema with root and nested types
+ * Iterates through the schema's root and nested types, creating field resolvers
+ * for each type. These resolvers handle accessing nested data from the parent
+ * document structure returned by CosmosDB.
+ *
+ * @param resolvers - Resolvers object to mutate (adds type-level resolvers)
+ * @param schema - Inferred schema containing root type and nested type definitions
  *
  * @example
  * ```ts
- * addNestedTypeResolvers({ resolvers, schema });
- * // Adds resolvers for nested fields in the schema
+ * const resolvers = { Query: { file: ..., files: ... } }
+ * addNestedTypeResolvers({ resolvers, schema })
+ * // resolvers now includes: { Query: {...}, File: {...}, FileMetadata: {...} }
  * ```
+ *
+ * @internal
  */
 function addNestedTypeResolvers({
   resolvers,
@@ -256,10 +263,14 @@ function addNestedTypeResolvers({
 
 /**
  * Build field-level resolvers for a type
- * Returns resolvers that access nested data from parent document
  *
- * @param typeDef - Type definition with fields
- * @returns Record of field resolvers
+ * Creates resolver functions for fields that have custom types (nested objects).
+ * These resolvers simply extract the nested field value from the parent document.
+ * Fields without custom types don't need resolvers (GraphQL's default resolver
+ * automatically accesses properties by name).
+ *
+ * @param typeDef - Type definition containing field information
+ * @returns Record mapping field name to resolver function
  *
  * @example
  * ```ts
@@ -267,11 +278,13 @@ function addNestedTypeResolvers({
  *   name: 'File',
  *   fields: [
  *     { name: 'metadata', customTypeName: 'FileMetadata' },
- *     { name: 'id' }
+ *     { name: 'id' } // No customTypeName - no resolver needed
  *   ]
- * });
- * // Returns resolvers for 'metadata' field to access nested object
+ * })
+ * // Returns: { metadata: (source) => source.metadata ?? null }
  * ```
+ *
+ * @internal
  */
 function buildFieldResolvers(
   typeDef: { name: string; fields: Array<{ name: string; customTypeName?: string }> },

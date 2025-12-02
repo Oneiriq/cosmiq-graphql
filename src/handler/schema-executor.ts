@@ -77,8 +77,28 @@ export function createExecutableSchema({
 /**
  * Attach resolvers to a GraphQL object type
  *
+ * Mutates a GraphQL object type by assigning resolver functions to its fields.
+ * This makes a schema "executable" by providing the logic to fetch data for
+ * each field. Only fields that have a matching resolver in the resolvers object
+ * are modified.
+ *
  * @param type - GraphQL object type to attach resolvers to
- * @param resolvers - Resolver functions for fields
+ * @param resolvers - Map of field names to resolver functions
+ *
+ * @example
+ * ```ts
+ * const queryType = schema.getQueryType()
+ * attachResolversToType({
+ *   type: queryType,
+ *   resolvers: {
+ *     file: async (_, args) => fetchFile(args.id),
+ *     files: async (_, args) => listFiles(args.limit)
+ *   }
+ * })
+ * // queryType.file and queryType.files now have resolver functions
+ * ```
+ *
+ * @internal
  */
 function attachResolversToType({
   type,

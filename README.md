@@ -3,7 +3,7 @@
 [![Deno Version](https://img.shields.io/badge/Deno-v2.5.6-green)](https://deno.land/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-A data-first schema generator for Azure CosmosDB that automatically infers GraphQL schemas from your documents. Analyzes actual data structure, generates type-safe GraphQL SDL, and integrates seamlessly with GraphQL Mesh.
+A data-first schema generator for Azure CosmosDB that automatically infers GraphQL schemas from your documents. Analyzes actual data structure, generates type-safe GraphQL SDL, and integrates seamlessly with GraphQL Mesh / Hive / Yoga, and Apollo Server for Deno or NodeJS.
 
 ## What It Does
 
@@ -17,25 +17,14 @@ A data-first schema generator for Azure CosmosDB that automatically infers Graph
 
 ## Installation
 
+CosmosDB Schemagen is available as both a jsr and npm package and can be installed via Deno or Node.js.
+
 ```bash
+# Deno
 deno add jsr:@albedosehen/cosmosdb-schemagen
-```
 
-## Quick Start
-
-Create a GraphQL Mesh subgraph from your CosmosDB container:
-
-```typescript
-import { loadCosmosDBSubgraph } from '@albedosehen/cosmosdb-schemagen'
-
-// Create a handler for GraphQL Mesh
-export const handler = loadCosmosDBSubgraph('MyData', {
-  connectionString: Deno.env.get('COSMOS_CONNECTION_STRING')!,
-  database: 'myDatabase',
-  container: 'myContainer',
-  sampleSize: 500,
-  typeName: 'Document'
-})
+# Node.js
+npm install @albedosehen/cosmosdb-schemagen
 ```
 
 ## Usage Examples
@@ -112,6 +101,75 @@ console.log(sdl)
 // }
 ```
 
+### Progress Reporting
+
+Monitor schema generation progress with optional progress callbacks:
+
+```typescript
+import { loadCosmosDBSubgraph } from '@albedosehen/cosmosdb-schemagen'
+import type { ProgressEvent } from '@albedosehen/cosmosdb-schemagen'
+
+const handler = loadCosmosDBSubgraph('MyData', {
+  connectionString: Deno.env.get('COSMOS_CONNECTION_STRING')!,
+  database: 'myDatabase',
+  container: 'myContainer',
+  sampleSize: 500,
+}, (event: ProgressEvent) => {
+  // Monitor progress through all stages
+  console.log(`[${event.stage}] ${event.message}`)
+  
+  if (event.progress !== undefined) {
+    console.log(`Progress: ${event.progress}%`)
+  }
+  
+  if (event.metadata) {
+    console.log('Metadata:', event.metadata)
+  }
+})
+
+// Example output:
+// [sampling_started] Starting document sampling (size: 500)
+// [sampling_progress] Sampled 250/500 documents (12.35 RU)
+// Progress: 50%
+// [sampling_progress] Sampled 500/500 documents (24.70 RU)
+// Progress: 100%
+// [sampling_complete] Sampling complete: 500 documents (24.70 RU)
+// Progress: 100%
+// [inference_started] Starting schema inference for 500 documents
+// [inference_complete] Schema inference complete: 5 types generated
+// Progress: 100%
+// [sdl_generation_started] Starting SDL generation for 5 types
+// [sdl_generation_complete] SDL generation complete: 78 lines generated
+// Progress: 100%
+```
+
+**Progress Events:**
+
+The progress callback receives events with the following stages:
+
+- `sampling_started` - Document sampling begins
+- `sampling_progress` - Incremental sampling updates with percentage
+- `sampling_complete` - Sampling finished with final count and RU consumed
+- `inference_started` - Schema inference begins
+- `inference_complete` - Schema inference complete with type count
+- `sdl_generation_started` - SDL generation begins
+- `sdl_generation_complete` - SDL generation complete with line count
+
+Each event includes:
+
+- `stage`: The current processing stage
+- `progress`: Optional percentage (0-100) for quantifiable stages
+- `message`: Human-readable description of the current operation
+- `metadata`: Optional additional data (document counts, RU consumed, etc.)
+
+**Use Cases:**
+
+- Display progress bars in CLI tools
+- Track RU consumption during schema generation
+- Monitor long-running operations
+- Debug schema generation issues
+- Implement custom logging strategies
+
 ### Rate Limiting & Retry Configuration
 
 CosmosDB Schemagen automatically handles rate limiting (HTTP 429) and transient errors with built-in retry logic using exponential backoff.
@@ -174,6 +232,129 @@ const handler = loadCosmosDBSubgraph('MySubgraph', {
 - `exponential` (default) - Delay doubles each retry: 100ms → 200ms → 400ms → 800ms
 - `linear` - Delay increases linearly: 100ms → 200ms → 300ms → 400ms  
 - `fixed` - Constant delay between retries: 100ms → 100ms → 100ms
+
+---
+
+### Error Handling
+
+CosmosDB Schemagen provides structured error handling with rich diagnostic metadata to help debug issues while maintaining security.
+
+#### **Error Types:**
+
+All errors extend from `CosmosDBError` and include:
+
+- Specific error codes for different failure scenarios
+- Severity levels (low, medium, high, critical)
+- Retryable flags for transient errors
+- Component context showing where the error occurred
+- Rich metadata for debugging (sanitized to exclude secrets)
+
+**Common Error Types:**
+
+```typescript
+import {
+  ValidationError,           // Input validation failures
+  ConfigurationError,        // Configuration issues
+  InvalidConnectionStringError,  // Malformed connection strings
+  RateLimitError,           // CosmosDB rate limiting (429)
+  QueryFailedError,         // Query execution failures
+  ServiceUnavailableError   // Service unavailable (503)
+} from '@albedosehen/cosmosdb-schemagen'
+```
+
+**Error Context:**
+
+Every error includes diagnostic metadata that helps with debugging:
+
+```typescript
+try {
+  const handler = loadCosmosDBSubgraph('MyData', {
+    // Missing required fields
+    database: 'myDb'
+  })
+} catch (error) {
+  if (error instanceof ConfigurationError) {
+    console.error('Configuration error:', error.message)
+    console.error('Component:', error.context.component)
+    console.error('Metadata:', error.context.metadata)
+    // Output includes sanitized config info:
+    // {
+    //   providedConfig: {
+    //     hasConnectionString: false,
+    //     hasEndpoint: false,
+    //     database: 'myDb',
+    //     container: undefined
+    //   }
+    // }
+  }
+}
+```
+
+**Security Considerations:**
+
+Error metadata is sanitized to prevent credential leakage:
+- Connection strings are `'[redacted]'`
+- Endpoints are `'[redacted]'`
+- API keys are never included
+- Tokens are never included
+- Document IDs are safe to include (useful for debugging)
+- Field names are safe to include
+- Configuration values include only non-sensitive values
+
+**Error Handling Best Practices:**
+
+```typescript
+import {
+  CosmosDBError,
+  RateLimitError,
+  ValidationError
+} from '@albedosehen/cosmosdb-schemagen'
+
+try {
+  const result = await generateSDL({
+    connectionString: process.env.COSMOS_CONN!,
+    database: 'myDb',
+    container: 'items',
+    sampleSize: 1000
+  })
+} catch (error) {
+  if (error instanceof RateLimitError) {
+    // Rate limit errors include retry-after info
+    console.error('Rate limited:', error.metadata.retryAfterMs)
+    // Consider backing off or reducing sample size
+  } else if (error instanceof ValidationError) {
+    // Validation errors include field-specific info
+    console.error('Validation failed:', error.context.metadata)
+    // Fix the invalid input
+  } else if (error instanceof CosmosDBError) {
+    // All CosmosDB errors have rich context
+    console.error('Error in:', error.context.component)
+    console.error('Severity:', error.severity)
+    console.error('Retryable:', error.retryable)
+    console.error('Details:', error.context.metadata)
+  } else {
+    // Unknown error
+    console.error('Unexpected error:', error)
+  }
+}
+```
+
+**Error Serialization:**
+
+Errors can be serialized to JSON for logging or transmission:
+
+```typescript
+try {
+  // ... operation that may fail
+} catch (error) {
+  if (error instanceof CosmosDBError) {
+    const errorJson = error.toJSON()
+    // Log structured error data
+    logger.error('Operation failed', errorJson)
+    // Includes: name, message, code, severity, retryable, context, stack
+  }
+}
+```
 
 ---
 
@@ -280,15 +461,6 @@ deno task lint
 # Type check
 deno task check
 ```
-
-## Contributing
-
-Contributions are welcome! Please ensure:
-
-- All code passes `deno fmt`, `deno lint`, and `deno check`
-- Tests are included for new features
-- Follow the project's TypeScript conventions
-- Update documentation for API changes
 
 ## License
 

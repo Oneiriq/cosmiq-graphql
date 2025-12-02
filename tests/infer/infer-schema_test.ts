@@ -478,4 +478,136 @@ describe('inferSchema', () => {
       assertEquals(dataField !== undefined, true)
     })
   })
+
+  describe('progress callback', () => {
+    it('should call progress callback with inference events', () => {
+      const documents: CosmosDBDocument[] = [
+        { id: '1', name: 'Alice', age: 30 },
+        { id: '2', name: 'Bob', age: 25 },
+      ]
+
+      const events: Array<{ stage: string; message?: string }> = []
+
+      inferSchema({
+        documents,
+        typeName: 'User',
+        onProgress: (event) => {
+          events.push({ stage: event.stage, message: event.message })
+        },
+      })
+
+      assertEquals(events.length, 2)
+      assertEquals(events[0].stage, 'inference_started')
+      assertEquals(events[1].stage, 'inference_complete')
+    })
+
+    it('should include document count in inference_started event', () => {
+      const documents: CosmosDBDocument[] = [
+        { id: '1', name: 'Alice' },
+        { id: '2', name: 'Bob' },
+        { id: '3', name: 'Charlie' },
+      ]
+
+      let startedEvent: unknown = null
+
+      inferSchema({
+        documents,
+        typeName: 'User',
+        onProgress: (event) => {
+          if (event.stage === 'inference_started') {
+            startedEvent = event
+          }
+        },
+      })
+
+      assertEquals(startedEvent !== null, true)
+      const event = startedEvent as { metadata?: { documentsCount: number } }
+      assertEquals(event.metadata?.documentsCount, 3)
+    })
+
+    it('should include metadata in inference_complete event', () => {
+      const documents: CosmosDBDocument[] = [
+        { id: '1', name: 'Alice', age: 30 },
+        { id: '2', name: 'Bob', age: 25 },
+      ]
+
+      let completeEvent: unknown = null
+
+      inferSchema({
+        documents,
+        typeName: 'User',
+        onProgress: (event) => {
+          if (event.stage === 'inference_complete') {
+            completeEvent = event
+          }
+        },
+      })
+
+      assertEquals(completeEvent !== null, true)
+      const event = completeEvent as {
+        progress?: number
+        metadata?: {
+          typesGenerated: number
+          fieldsAnalyzed: number
+          conflictsResolved: number
+        }
+      }
+      assertEquals(event.progress, 100)
+      assertEquals(event.metadata?.typesGenerated, 1)
+      assertEquals(event.metadata?.fieldsAnalyzed, 3)
+    })
+
+    it('should work without progress callback', () => {
+      const documents: CosmosDBDocument[] = [
+        { id: '1', name: 'Alice' },
+      ]
+
+      const schema = inferSchema({
+        documents,
+        typeName: 'User',
+      })
+
+      assertEquals(schema.rootType.name, 'User')
+    })
+
+    it('should fire events in correct order', () => {
+      const documents: CosmosDBDocument[] = [
+        { id: '1', name: 'Alice' },
+      ]
+
+      const stages: string[] = []
+
+      inferSchema({
+        documents,
+        typeName: 'User',
+        onProgress: (event) => {
+          stages.push(event.stage)
+        },
+      })
+
+      assertEquals(stages, ['inference_started', 'inference_complete'])
+    })
+
+    it('should include message in all progress events', () => {
+      const documents: CosmosDBDocument[] = [
+        { id: '1', name: 'Alice' },
+      ]
+
+      const messages: string[] = []
+
+      inferSchema({
+        documents,
+        typeName: 'User',
+        onProgress: (event) => {
+          if (event.message) {
+            messages.push(event.message)
+          }
+        },
+      })
+
+      assertEquals(messages.length, 2)
+      assertEquals(messages[0].includes('Starting schema inference'), true)
+      assertEquals(messages[1].includes('Schema inference complete'), true)
+    })
+  })
 })

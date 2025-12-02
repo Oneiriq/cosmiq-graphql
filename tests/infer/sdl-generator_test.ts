@@ -876,4 +876,248 @@ describe('buildGraphQLSDL', () => {
       assertStringIncludes(sdl, 'blogposts(')
     })
   })
+
+  describe('progress callback', () => {
+    it('should call progress callback with SDL generation events', () => {
+      const schema: InferredSchema = {
+        rootType: {
+          name: 'User',
+          fields: [
+            { name: 'id', type: 'ID!', required: true, isArray: false },
+            { name: 'name', type: 'String!', required: true, isArray: false },
+          ],
+          isNested: false,
+        },
+        nestedTypes: [],
+        stats: {
+          totalDocuments: 100,
+          fieldsAnalyzed: 2,
+          typesGenerated: 1,
+          conflictsResolved: 0,
+          nestedTypesCreated: 0,
+        },
+      }
+
+      const events: Array<{ stage: string; message?: string }> = []
+
+      buildGraphQLSDL({
+        schema,
+        onProgress: (event) => {
+          events.push({ stage: event.stage, message: event.message })
+        },
+      })
+
+      assertEquals(events.length, 2)
+      assertEquals(events[0].stage, 'sdl_generation_started')
+      assertEquals(events[1].stage, 'sdl_generation_complete')
+    })
+
+    it('should include types count in sdl_generation_started event', () => {
+      const schema: InferredSchema = {
+        rootType: {
+          name: 'User',
+          fields: [
+            { name: 'id', type: 'ID!', required: true, isArray: false },
+          ],
+          isNested: false,
+        },
+        nestedTypes: [
+          {
+            name: 'UserProfile',
+            fields: [
+              { name: 'bio', type: 'String', required: false, isArray: false },
+            ],
+            isNested: true,
+            parentType: 'User',
+          },
+        ],
+        stats: {
+          totalDocuments: 100,
+          fieldsAnalyzed: 2,
+          typesGenerated: 2,
+          conflictsResolved: 0,
+          nestedTypesCreated: 1,
+        },
+      }
+
+      let startedEvent: unknown = null
+
+      buildGraphQLSDL({
+        schema,
+        onProgress: (event) => {
+          if (event.stage === 'sdl_generation_started') {
+            startedEvent = event
+          }
+        },
+      })
+
+      assertEquals(startedEvent !== null, true)
+      const event = startedEvent as { metadata?: { typesCount: number } }
+      assertEquals(event.metadata?.typesCount, 2)
+    })
+
+    it('should include line count in sdl_generation_complete event', () => {
+      const schema: InferredSchema = {
+        rootType: {
+          name: 'User',
+          fields: [
+            { name: 'id', type: 'ID!', required: true, isArray: false },
+          ],
+          isNested: false,
+        },
+        nestedTypes: [],
+        stats: {
+          totalDocuments: 100,
+          fieldsAnalyzed: 1,
+          typesGenerated: 1,
+          conflictsResolved: 0,
+          nestedTypesCreated: 0,
+        },
+      }
+
+      let completeEvent: unknown = null
+
+      buildGraphQLSDL({
+        schema,
+        onProgress: (event) => {
+          if (event.stage === 'sdl_generation_complete') {
+            completeEvent = event
+          }
+        },
+      })
+
+      assertEquals(completeEvent !== null, true)
+      const event = completeEvent as {
+        progress?: number
+        metadata?: { linesGenerated: number }
+      }
+      assertEquals(event.progress, 100)
+      assertEquals(event.metadata !== undefined, true)
+      assertEquals(event.metadata!.linesGenerated > 0, true)
+    })
+
+    it('should work without progress callback', () => {
+      const schema: InferredSchema = {
+        rootType: {
+          name: 'User',
+          fields: [
+            { name: 'id', type: 'ID!', required: true, isArray: false },
+          ],
+          isNested: false,
+        },
+        nestedTypes: [],
+        stats: {
+          totalDocuments: 100,
+          fieldsAnalyzed: 1,
+          typesGenerated: 1,
+          conflictsResolved: 0,
+          nestedTypesCreated: 0,
+        },
+      }
+
+      const sdl = buildGraphQLSDL({ schema })
+
+      assertStringIncludes(sdl, 'type User {')
+    })
+
+    it('should fire events in correct order', () => {
+      const schema: InferredSchema = {
+        rootType: {
+          name: 'User',
+          fields: [
+            { name: 'id', type: 'ID!', required: true, isArray: false },
+          ],
+          isNested: false,
+        },
+        nestedTypes: [],
+        stats: {
+          totalDocuments: 100,
+          fieldsAnalyzed: 1,
+          typesGenerated: 1,
+          conflictsResolved: 0,
+          nestedTypesCreated: 0,
+        },
+      }
+
+      const stages: string[] = []
+
+      buildGraphQLSDL({
+        schema,
+        onProgress: (event) => {
+          stages.push(event.stage)
+        },
+      })
+
+      assertEquals(stages, ['sdl_generation_started', 'sdl_generation_complete'])
+    })
+
+    it('should include message in all progress events', () => {
+      const schema: InferredSchema = {
+        rootType: {
+          name: 'User',
+          fields: [
+            { name: 'id', type: 'ID!', required: true, isArray: false },
+          ],
+          isNested: false,
+        },
+        nestedTypes: [],
+        stats: {
+          totalDocuments: 100,
+          fieldsAnalyzed: 1,
+          typesGenerated: 1,
+          conflictsResolved: 0,
+          nestedTypesCreated: 0,
+        },
+      }
+
+      const messages: string[] = []
+
+      buildGraphQLSDL({
+        schema,
+        onProgress: (event) => {
+          if (event.message) {
+            messages.push(event.message)
+          }
+        },
+      })
+
+      assertEquals(messages.length, 2)
+      assertEquals(messages[0].includes('Starting SDL generation'), true)
+      assertEquals(messages[1].includes('SDL generation complete'), true)
+    })
+
+    it('should work with includeQueries option', () => {
+      const schema: InferredSchema = {
+        rootType: {
+          name: 'User',
+          fields: [
+            { name: 'id', type: 'ID!', required: true, isArray: false },
+          ],
+          isNested: false,
+        },
+        nestedTypes: [],
+        stats: {
+          totalDocuments: 100,
+          fieldsAnalyzed: 1,
+          typesGenerated: 1,
+          conflictsResolved: 0,
+          nestedTypesCreated: 0,
+        },
+      }
+
+      const events: string[] = []
+
+      buildGraphQLSDL({
+        schema,
+        includeQueries: false,
+        onProgress: (event) => {
+          events.push(event.stage)
+        },
+      })
+
+      assertEquals(events.length, 2)
+      assertEquals(events[0], 'sdl_generation_started')
+      assertEquals(events[1], 'sdl_generation_complete')
+    })
+  })
 })

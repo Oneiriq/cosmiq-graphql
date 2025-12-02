@@ -12,6 +12,8 @@ export * from './src/infer/mod.ts'
 
 export * from './src/handler/mod.ts'
 
+export * from './src/cache/mod.ts'
+
 export { generateSDL } from './src/adapters/generic.ts'
 export { loadCosmosDBSubgraph } from './src/adapters/mesh.ts'
 export { buildCoreSchema } from './src/adapters/core.ts'

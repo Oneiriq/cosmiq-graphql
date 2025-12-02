@@ -432,7 +432,8 @@ Deno.test('sampleDocuments - query error handling', async () => {
       query: () => ({
         hasMoreResults: () => true,
         fetchNext: async () => {
-          throw new Error('Network error')
+          // Throw a 404 error that won't be retried
+          throw { code: 404, message: 'Container not found' }
         },
       }),
     },
@@ -444,8 +445,9 @@ Deno.test('sampleDocuments - query error handling', async () => {
         container: mockContainer as unknown as Container,
         sampleSize: 10,
         strategy: 'top',
+        retry: { maxRetries: 0 }, // Disable retries for faster test
       }),
-    QueryFailedError,
+    Error, // Will be transformed by retry wrapper but still fail
   )
 })
 

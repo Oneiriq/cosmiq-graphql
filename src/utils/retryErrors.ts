@@ -5,18 +5,18 @@
 
 import type { CosmosDBErrorContext, CosmosDBErrorMetadata } from '../errors/mod.ts'
 import {
+  BadGatewayError,
+  BadRequestError,
+  ConflictError,
   createErrorContext,
+  ForbiddenError,
+  GatewayTimeoutError,
+  InternalServerError,
+  NotFoundError,
   RateLimitError,
   RequestTimeoutError,
   ServiceUnavailableError,
-  BadRequestError,
   UnauthorizedError,
-  ForbiddenError,
-  NotFoundError,
-  ConflictError,
-  InternalServerError,
-  BadGatewayError,
-  GatewayTimeoutError,
 } from '../errors/mod.ts'
 import type { RetryConfig, RetryContext } from '../types/handler.ts'
 
@@ -171,7 +171,6 @@ export function isRetryableError(error: unknown): boolean {
  * @param component - Component name for error context
  * @param retryContext - Optional retry context information
  * @returns Transformed error
- *
  */
 export function transformCosmosDBError(
   error: unknown,

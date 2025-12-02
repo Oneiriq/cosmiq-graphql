@@ -88,12 +88,35 @@ export async function generateSDL(config: GenericSDLConfig): Promise<GenericSDLR
   } else if (config.endpoint) {
     throw new ConfigurationError(
       'When using endpoint authentication, credential must be provided',
-      createErrorContext({ component: 'generateSDL' }),
+      createErrorContext({
+        component: 'generateSDL',
+        metadata: {
+          providedConfig: {
+            endpoint: '[redacted]',
+            hasCredential: false,
+            database,
+            container,
+            sampleSize: config.sampleSize || 500,
+          },
+        },
+      }),
     )
   } else {
     throw new ConfigurationError(
       'Either connectionString or endpoint+credential must be provided',
-      createErrorContext({ component: 'generateSDL' }),
+      createErrorContext({
+        component: 'generateSDL',
+        metadata: {
+          providedConfig: {
+            hasConnectionString: false,
+            hasEndpoint: false,
+            hasCredential: false,
+            database,
+            container,
+            sampleSize: config.sampleSize || 500,
+          },
+        },
+      }),
     )
   }
 

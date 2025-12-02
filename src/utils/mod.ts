@@ -13,3 +13,9 @@ export * from './validation.ts'
 // Retry utilities
 export * from './retryErrors.ts'
 export * from './retryWrapper.ts'
+
+// Container metadata utilities
+export * from './containerMetadata.ts'
+
+// Logger utilities
+export * from './logger.ts'

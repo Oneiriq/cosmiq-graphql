@@ -129,8 +129,15 @@ Deno.test('resolveArrayElementType - handles mixed with null', () => {
   assertEquals(result, 'String')
 })
 
-Deno.test('TypeConflictError - has correct name', () => {
-  const error = new TypeConflictError('test message')
+Deno.test('TypeConflictError - has correct name and properties', () => {
+  const types = new Set<PrimitiveType>(['string', 'number'])
+  const error = new TypeConflictError('test message', types, 'testField')
   assertEquals(error.name, 'TypeConflictError')
   assertEquals(error.message, 'test message')
+  assertEquals(error.context.component, 'type-conflict-resolver')
+  assertEquals(error.context.metadata?.conflictingTypes, ['string', 'number'])
+  assertEquals(error.context.metadata?.fieldName, 'testField')
+  assertEquals(error.context.metadata?.typeCount, 2)
+  assertEquals(error.severity, 'high')
+  assertEquals(error.retryable, false)
 })
