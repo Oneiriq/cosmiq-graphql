@@ -32,10 +32,26 @@ export enum ErrorCode {
   QUERY_FAILED = 'QUERY_FAILED',
   /** Validation error for input data */
   VALIDATION_ERROR = 'VALIDATION_ERROR',
+  /** Bad request (HTTP 400) */
+  BAD_REQUEST = 'BAD_REQUEST',
+  /** Unauthorized (HTTP 401) */
+  UNAUTHORIZED = 'UNAUTHORIZED',
+  /** Forbidden (HTTP 403) */
+  FORBIDDEN = 'FORBIDDEN',
+  /** Not found (HTTP 404) */
+  NOT_FOUND = 'NOT_FOUND',
+  /** Conflict (HTTP 409) */
+  CONFLICT = 'CONFLICT',
   /** Rate limit exceeded (HTTP 429) */
   RATE_LIMIT_EXCEEDED = 'RATE_LIMIT_EXCEEDED',
+  /** Internal server error (HTTP 500) */
+  INTERNAL_SERVER_ERROR = 'INTERNAL_SERVER_ERROR',
+  /** Bad gateway (HTTP 502) */
+  BAD_GATEWAY = 'BAD_GATEWAY',
   /** Service unavailable (HTTP 503) */
   SERVICE_UNAVAILABLE = 'SERVICE_UNAVAILABLE',
+  /** Gateway timeout (HTTP 504) */
+  GATEWAY_TIMEOUT = 'GATEWAY_TIMEOUT',
   /** Request timeout */
   REQUEST_TIMEOUT = 'REQUEST_TIMEOUT',
   /** Unknown error */
@@ -438,6 +454,361 @@ export class RequestTimeoutError extends CosmosDBError {
   /**
    * Serialize error to JSON with metadata
    */
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      metadata: this.metadata,
+    }
+  }
+}
+
+/**
+ * Error thrown for bad request (HTTP 400)
+ *
+ * Indicates client sent invalid data or malformed request.
+ *
+ * @example
+ * ```ts
+ * throw new BadRequestError({
+ *   message: 'Invalid query syntax',
+ *   context,
+ *   metadata: { statusCode: 400 }
+ * });
+ * ```
+ */
+export class BadRequestError extends CosmosDBError {
+  public readonly metadata: CosmosDBErrorMetadata
+
+  constructor({
+    message,
+    context,
+    metadata = {},
+  }: {
+    message: string
+    context: CosmosDBErrorContext
+    metadata?: CosmosDBErrorMetadata
+  }) {
+    super({
+      message,
+      context,
+      code: ErrorCode.BAD_REQUEST,
+      severity: 'high',
+      retryable: false,
+    })
+    this.metadata = metadata
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      metadata: this.metadata,
+    }
+  }
+}
+
+/**
+ * Error thrown for unauthorized access (HTTP 401)
+ *
+ * Indicates authentication is required or has failed.
+ *
+ * @example
+ * ```ts
+ * throw new UnauthorizedError({
+ *   message: 'Invalid credentials',
+ *   context,
+ *   metadata: { statusCode: 401 }
+ * });
+ * ```
+ */
+export class UnauthorizedError extends CosmosDBError {
+  public readonly metadata: CosmosDBErrorMetadata
+
+  constructor({
+    message,
+    context,
+    metadata = {},
+  }: {
+    message: string
+    context: CosmosDBErrorContext
+    metadata?: CosmosDBErrorMetadata
+  }) {
+    super({
+      message,
+      context,
+      code: ErrorCode.UNAUTHORIZED,
+      severity: 'high',
+      retryable: false,
+    })
+    this.metadata = metadata
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      metadata: this.metadata,
+    }
+  }
+}
+
+/**
+ * Error thrown for forbidden access (HTTP 403)
+ *
+ * Indicates client lacks permission to access resource.
+ *
+ * @example
+ * ```ts
+ * throw new ForbiddenError({
+ *   message: 'Insufficient permissions',
+ *   context,
+ *   metadata: { statusCode: 403 }
+ * });
+ * ```
+ */
+export class ForbiddenError extends CosmosDBError {
+  public readonly metadata: CosmosDBErrorMetadata
+
+  constructor({
+    message,
+    context,
+    metadata = {},
+  }: {
+    message: string
+    context: CosmosDBErrorContext
+    metadata?: CosmosDBErrorMetadata
+  }) {
+    super({
+      message,
+      context,
+      code: ErrorCode.FORBIDDEN,
+      severity: 'high',
+      retryable: false,
+    })
+    this.metadata = metadata
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      metadata: this.metadata,
+    }
+  }
+}
+
+/**
+ * Error thrown for not found (HTTP 404)
+ *
+ * Indicates requested resource does not exist.
+ *
+ * @example
+ * ```ts
+ * throw new NotFoundError({
+ *   message: 'Database not found',
+ *   context,
+ *   metadata: { statusCode: 404 }
+ * });
+ * ```
+ */
+export class NotFoundError extends CosmosDBError {
+  public readonly metadata: CosmosDBErrorMetadata
+
+  constructor({
+    message,
+    context,
+    metadata = {},
+  }: {
+    message: string
+    context: CosmosDBErrorContext
+    metadata?: CosmosDBErrorMetadata
+  }) {
+    super({
+      message,
+      context,
+      code: ErrorCode.NOT_FOUND,
+      severity: 'medium',
+      retryable: false,
+    })
+    this.metadata = metadata
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      metadata: this.metadata,
+    }
+  }
+}
+
+/**
+ * Error thrown for conflict (HTTP 409)
+ *
+ * Indicates request conflicts with current state.
+ *
+ * @example
+ * ```ts
+ * throw new ConflictError({
+ *   message: 'Resource already exists',
+ *   context,
+ *   metadata: { statusCode: 409 }
+ * });
+ * ```
+ */
+export class ConflictError extends CosmosDBError {
+  public readonly metadata: CosmosDBErrorMetadata
+
+  constructor({
+    message,
+    context,
+    metadata = {},
+  }: {
+    message: string
+    context: CosmosDBErrorContext
+    metadata?: CosmosDBErrorMetadata
+  }) {
+    super({
+      message,
+      context,
+      code: ErrorCode.CONFLICT,
+      severity: 'medium',
+      retryable: false,
+    })
+    this.metadata = metadata
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      metadata: this.metadata,
+    }
+  }
+}
+
+/**
+ * Error thrown for internal server error (HTTP 500)
+ *
+ * Indicates server encountered an unexpected condition.
+ * This error is retryable as it may be transient.
+ *
+ * @example
+ * ```ts
+ * throw new InternalServerError({
+ *   message: 'Server error occurred',
+ *   context,
+ *   metadata: { statusCode: 500 }
+ * });
+ * ```
+ */
+export class InternalServerError extends CosmosDBError {
+  public readonly metadata: CosmosDBErrorMetadata
+
+  constructor({
+    message,
+    context,
+    metadata = {},
+  }: {
+    message: string
+    context: CosmosDBErrorContext
+    metadata?: CosmosDBErrorMetadata
+  }) {
+    super({
+      message,
+      context,
+      code: ErrorCode.INTERNAL_SERVER_ERROR,
+      severity: 'high',
+      retryable: true,
+    })
+    this.metadata = metadata
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      metadata: this.metadata,
+    }
+  }
+}
+
+/**
+ * Error thrown for bad gateway (HTTP 502)
+ *
+ * Indicates invalid response from upstream server.
+ * This error is retryable as it may be transient.
+ *
+ * @example
+ * ```ts
+ * throw new BadGatewayError({
+ *   message: 'Invalid gateway response',
+ *   context,
+ *   metadata: { statusCode: 502 }
+ * });
+ * ```
+ */
+export class BadGatewayError extends CosmosDBError {
+  public readonly metadata: CosmosDBErrorMetadata
+
+  constructor({
+    message,
+    context,
+    metadata = {},
+  }: {
+    message: string
+    context: CosmosDBErrorContext
+    metadata?: CosmosDBErrorMetadata
+  }) {
+    super({
+      message,
+      context,
+      code: ErrorCode.BAD_GATEWAY,
+      severity: 'high',
+      retryable: true,
+    })
+    this.metadata = metadata
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      metadata: this.metadata,
+    }
+  }
+}
+
+/**
+ * Error thrown for gateway timeout (HTTP 504)
+ *
+ * Indicates gateway did not receive timely response from upstream server.
+ * This error is retryable as it may be transient.
+ *
+ * @example
+ * ```ts
+ * throw new GatewayTimeoutError({
+ *   message: 'Gateway timeout',
+ *   context,
+ *   metadata: { statusCode: 504 }
+ * });
+ * ```
+ */
+export class GatewayTimeoutError extends CosmosDBError {
+  public readonly metadata: CosmosDBErrorMetadata
+
+  constructor({
+    message,
+    context,
+    metadata = {},
+  }: {
+    message: string
+    context: CosmosDBErrorContext
+    metadata?: CosmosDBErrorMetadata
+  }) {
+    super({
+      message,
+      context,
+      code: ErrorCode.GATEWAY_TIMEOUT,
+      severity: 'medium',
+      retryable: true,
+    })
+    this.metadata = metadata
+  }
+
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),

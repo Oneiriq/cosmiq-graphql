@@ -4,7 +4,20 @@
  */
 
 import type { CosmosDBErrorContext, CosmosDBErrorMetadata } from '../errors/mod.ts'
-import { createErrorContext, RateLimitError, RequestTimeoutError, ServiceUnavailableError } from '../errors/mod.ts'
+import {
+  createErrorContext,
+  RateLimitError,
+  RequestTimeoutError,
+  ServiceUnavailableError,
+  BadRequestError,
+  UnauthorizedError,
+  ForbiddenError,
+  NotFoundError,
+  ConflictError,
+  InternalServerError,
+  BadGatewayError,
+  GatewayTimeoutError,
+} from '../errors/mod.ts'
 import type { RetryConfig, RetryContext } from '../types/handler.ts'
 
 /**
@@ -104,7 +117,12 @@ export function isRetryableError(error: unknown): boolean {
   }
 
   if (
-    error instanceof RateLimitError || error instanceof ServiceUnavailableError || error instanceof RequestTimeoutError
+    error instanceof RateLimitError ||
+    error instanceof ServiceUnavailableError ||
+    error instanceof RequestTimeoutError ||
+    error instanceof InternalServerError ||
+    error instanceof BadGatewayError ||
+    error instanceof GatewayTimeoutError
   ) {
     return true
   }
@@ -117,7 +135,7 @@ export function isRetryableError(error: unknown): boolean {
     ? err.statusCode
     : undefined
 
-  if (statusCode === 429 || statusCode === 503 || statusCode === 408) {
+  if (statusCode === 429 || statusCode === 503 || statusCode === 408 || statusCode === 504) {
     return true
   }
 
@@ -164,7 +182,15 @@ export function transformCosmosDBError(
     error instanceof Error && (
       error instanceof RateLimitError ||
       error instanceof ServiceUnavailableError ||
-      error instanceof RequestTimeoutError
+      error instanceof RequestTimeoutError ||
+      error instanceof BadRequestError ||
+      error instanceof UnauthorizedError ||
+      error instanceof ForbiddenError ||
+      error instanceof NotFoundError ||
+      error instanceof ConflictError ||
+      error instanceof InternalServerError ||
+      error instanceof BadGatewayError ||
+      error instanceof GatewayTimeoutError
     )
   ) {
     return error
@@ -181,9 +207,73 @@ export function transformCosmosDBError(
 
   const message = error instanceof Error ? error.message : String(error)
 
+  if (metadata.statusCode === 400) {
+    return new BadRequestError({
+      message: message || 'Bad request',
+      context,
+      metadata,
+    })
+  }
+
+  if (metadata.statusCode === 401) {
+    return new UnauthorizedError({
+      message: message || 'Unauthorized',
+      context,
+      metadata,
+    })
+  }
+
+  if (metadata.statusCode === 403) {
+    return new ForbiddenError({
+      message: message || 'Forbidden',
+      context,
+      metadata,
+    })
+  }
+
+  if (metadata.statusCode === 404) {
+    return new NotFoundError({
+      message: message || 'Not found',
+      context,
+      metadata,
+    })
+  }
+
+  if (metadata.statusCode === 408) {
+    return new RequestTimeoutError({
+      message: message || 'Request timeout',
+      context,
+      metadata,
+    })
+  }
+
+  if (metadata.statusCode === 409) {
+    return new ConflictError({
+      message: message || 'Conflict',
+      context,
+      metadata,
+    })
+  }
+
   if (metadata.statusCode === 429) {
     return new RateLimitError({
       message: message || 'Request rate is large',
+      context,
+      metadata,
+    })
+  }
+
+  if (metadata.statusCode === 500) {
+    return new InternalServerError({
+      message: message || 'Internal server error',
+      context,
+      metadata,
+    })
+  }
+
+  if (metadata.statusCode === 502) {
+    return new BadGatewayError({
+      message: message || 'Bad gateway',
       context,
       metadata,
     })
@@ -197,9 +287,17 @@ export function transformCosmosDBError(
     })
   }
 
-  if (metadata.statusCode === 408 || (typeof message === 'string' && message.toLowerCase().includes('timeout'))) {
+  if (metadata.statusCode === 504) {
+    return new GatewayTimeoutError({
+      message: message || 'Gateway timeout',
+      context,
+      metadata,
+    })
+  }
+
+  if (typeof message === 'string' && message.toLowerCase().includes('timeout')) {
     return new RequestTimeoutError({
-      message: message || 'Request timed out',
+      message,
       context,
       metadata,
     })

@@ -9,6 +9,14 @@ import {
   RateLimitError,
   ServiceUnavailableError,
   RequestTimeoutError,
+  BadRequestError,
+  UnauthorizedError,
+  ForbiddenError,
+  NotFoundError,
+  ConflictError,
+  InternalServerError,
+  BadGatewayError,
+  GatewayTimeoutError,
 } from '../../src/errors/mod.ts'
 import { DEFAULT_RETRY_CONFIG } from '../../src/types/handler.ts'
 
@@ -42,6 +50,7 @@ Deno.test('Error Detection and Classification', async (t) => {
     assertEquals(isRetryableError({ code: 500 }), true)
     assertEquals(isRetryableError({ code: 502 }), true)
     assertEquals(isRetryableError({ code: 504 }), true)
+    assertEquals(isRetryableError({ code: 599 }), true)
   })
 
   await t.step('should detect error instances as retryable', () => {
@@ -62,6 +71,56 @@ Deno.test('Error Detection and Classification', async (t) => {
       context: { component: 'test', timestamp: new Date().toISOString() },
     })
     assertEquals(isRetryableError(timeoutError), true)
+
+    const internalError = new InternalServerError({
+      message: 'Internal error',
+      context: { component: 'test', timestamp: new Date().toISOString() },
+    })
+    assertEquals(isRetryableError(internalError), true)
+
+    const gatewayError = new BadGatewayError({
+      message: 'Bad gateway',
+      context: { component: 'test', timestamp: new Date().toISOString() },
+    })
+    assertEquals(isRetryableError(gatewayError), true)
+
+    const gatewayTimeoutError = new GatewayTimeoutError({
+      message: 'Gateway timeout',
+      context: { component: 'test', timestamp: new Date().toISOString() },
+    })
+    assertEquals(isRetryableError(gatewayTimeoutError), true)
+  })
+
+  await t.step('should detect non-retryable error instances', () => {
+    const badRequestError = new BadRequestError({
+      message: 'Bad request',
+      context: { component: 'test', timestamp: new Date().toISOString() },
+    })
+    assertEquals(isRetryableError(badRequestError), false)
+
+    const unauthorizedError = new UnauthorizedError({
+      message: 'Unauthorized',
+      context: { component: 'test', timestamp: new Date().toISOString() },
+    })
+    assertEquals(isRetryableError(unauthorizedError), false)
+
+    const forbiddenError = new ForbiddenError({
+      message: 'Forbidden',
+      context: { component: 'test', timestamp: new Date().toISOString() },
+    })
+    assertEquals(isRetryableError(forbiddenError), false)
+
+    const notFoundError = new NotFoundError({
+      message: 'Not found',
+      context: { component: 'test', timestamp: new Date().toISOString() },
+    })
+    assertEquals(isRetryableError(notFoundError), false)
+
+    const conflictError = new ConflictError({
+      message: 'Conflict',
+      context: { component: 'test', timestamp: new Date().toISOString() },
+    })
+    assertEquals(isRetryableError(conflictError), false)
   })
 
   await t.step('should handle non-object errors', () => {
@@ -225,10 +284,81 @@ Deno.test('Error Transformation', async (t) => {
     assertEquals(transformed, error)
   })
 
+  await t.step('should transform 400 to BadRequestError', () => {
+    const error = { code: 400, message: 'Bad request' }
+    const transformed = transformCosmosDBError(error, 'test-component')
+    assert(transformed instanceof BadRequestError)
+  })
+
+  await t.step('should transform 401 to UnauthorizedError', () => {
+    const error = { code: 401, message: 'Unauthorized' }
+    const transformed = transformCosmosDBError(error, 'test-component')
+    assert(transformed instanceof UnauthorizedError)
+  })
+
+  await t.step('should transform 403 to ForbiddenError', () => {
+    const error = { code: 403, message: 'Forbidden' }
+    const transformed = transformCosmosDBError(error, 'test-component')
+    assert(transformed instanceof ForbiddenError)
+  })
+
+  await t.step('should transform 404 to NotFoundError', () => {
+    const error = { code: 404, message: 'Not found' }
+    const transformed = transformCosmosDBError(error, 'test-component')
+    assert(transformed instanceof NotFoundError)
+  })
+
+  await t.step('should transform 409 to ConflictError', () => {
+    const error = { code: 409, message: 'Conflict' }
+    const transformed = transformCosmosDBError(error, 'test-component')
+    assert(transformed instanceof ConflictError)
+  })
+
+  await t.step('should transform 500 to InternalServerError', () => {
+    const error = { code: 500, message: 'Internal server error' }
+    const transformed = transformCosmosDBError(error, 'test-component')
+    assert(transformed instanceof InternalServerError)
+  })
+
+  await t.step('should transform 502 to BadGatewayError', () => {
+    const error = { code: 502, message: 'Bad gateway' }
+    const transformed = transformCosmosDBError(error, 'test-component')
+    assert(transformed instanceof BadGatewayError)
+  })
+
+  await t.step('should transform 504 to GatewayTimeoutError', () => {
+    const error = { code: 504, message: 'Gateway timeout' }
+    const transformed = transformCosmosDBError(error, 'test-component')
+    assert(transformed instanceof GatewayTimeoutError)
+  })
+
   await t.step('should preserve non-retryable errors', () => {
     const error = new Error('Custom error')
     const transformed = transformCosmosDBError(error, 'test-component')
     assertEquals(transformed, error)
+  })
+
+  await t.step('should preserve already typed errors', () => {
+    const badRequestError = new BadRequestError({
+      message: 'Bad request',
+      context: { component: 'original', timestamp: new Date().toISOString() },
+    })
+    const transformed = transformCosmosDBError(badRequestError, 'test-component')
+    assertEquals(transformed, badRequestError)
+
+    const unauthorizedError = new UnauthorizedError({
+      message: 'Unauthorized',
+      context: { component: 'original', timestamp: new Date().toISOString() },
+    })
+    const transformedUnauth = transformCosmosDBError(unauthorizedError, 'test-component')
+    assertEquals(transformedUnauth, unauthorizedError)
+
+    const notFoundError = new NotFoundError({
+      message: 'Not found',
+      context: { component: 'original', timestamp: new Date().toISOString() },
+    })
+    const transformedNotFound = transformCosmosDBError(notFoundError, 'test-component')
+    assertEquals(transformedNotFound, notFoundError)
   })
 
   await t.step('should include retry context in error', () => {
@@ -266,6 +396,48 @@ Deno.test('Error Transformation', async (t) => {
     const transformed = transformCosmosDBError(error, 'test-component')
     assert(transformed instanceof ServiceUnavailableError)
     assert(transformed.message.includes('Service temporarily unavailable') || transformed.message.includes('[object Object]'))
+  })
+
+  await t.step('should use default message for 400 without message', () => {
+    const error = { code: 400 }
+    const transformed = transformCosmosDBError(error, 'test-component')
+    assert(transformed instanceof BadRequestError)
+    assert(transformed.message.includes('Bad request') || transformed.message.includes('[object Object]'))
+  })
+
+  await t.step('should use default message for 401 without message', () => {
+    const error = { code: 401 }
+    const transformed = transformCosmosDBError(error, 'test-component')
+    assert(transformed instanceof UnauthorizedError)
+    assert(transformed.message.includes('Unauthorized') || transformed.message.includes('[object Object]'))
+  })
+
+  await t.step('should use default message for 404 without message', () => {
+    const error = { code: 404 }
+    const transformed = transformCosmosDBError(error, 'test-component')
+    assert(transformed instanceof NotFoundError)
+    assert(transformed.message.includes('Not found') || transformed.message.includes('[object Object]'))
+  })
+
+  await t.step('should use default message for 500 without message', () => {
+    const error = { code: 500 }
+    const transformed = transformCosmosDBError(error, 'test-component')
+    assert(transformed instanceof InternalServerError)
+    assert(transformed.message.includes('Internal server error') || transformed.message.includes('[object Object]'))
+  })
+
+  await t.step('should use default message for 502 without message', () => {
+    const error = { code: 502 }
+    const transformed = transformCosmosDBError(error, 'test-component')
+    assert(transformed instanceof BadGatewayError)
+    assert(transformed.message.includes('Bad gateway') || transformed.message.includes('[object Object]'))
+  })
+
+  await t.step('should use default message for 504 without message', () => {
+    const error = { code: 504 }
+    const transformed = transformCosmosDBError(error, 'test-component')
+    assert(transformed instanceof GatewayTimeoutError)
+    assert(transformed.message.includes('Gateway timeout') || transformed.message.includes('[object Object]'))
   })
 })
 
