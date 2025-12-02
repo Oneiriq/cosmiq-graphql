@@ -112,6 +112,71 @@ console.log(sdl)
 // }
 ```
 
+### Rate Limiting & Retry Configuration
+
+CosmosDB Schemagen automatically handles rate limiting (HTTP 429) and transient errors with built-in retry logic using exponential backoff.
+
+**Default Behavior:**
+
+- Automatically retries on rate limits (429), service unavailable (503), and timeouts (408)
+- Uses exponential backoff with jitter to prevent thundering herd
+- Respects CosmosDB's `retry-after` headers
+- Maximum 3 retry attempts by default
+- Configurable retry budget to prevent runaway RU consumption
+
+**Custom Retry Configuration:**
+
+```typescript
+import { loadCosmosDBSubgraph } from '@albedosehen/cosmosdb-schemagen'
+
+const handler = loadCosmosDBSubgraph('MySubgraph', {
+  connectionString: process.env.COSMOS_CONN!,
+  database: 'db',
+  container: 'items',
+  
+  // Optional: Customize retry behavior
+  retry: {
+    maxRetries: 5,              // Maximum retry attempts (default: 3)
+    baseDelayMs: 200,           // Base delay between retries (default: 100ms)
+    maxDelayMs: 60000,          // Maximum delay cap (default: 30s)
+    strategy: 'exponential',    // 'exponential' | 'linear' | 'fixed' (default: exponential)
+    jitterFactor: 0.1,          // Jitter percentage (default: 0.1 = 10%)
+    respectRetryAfter: true,    // Use retry-after headers (default: true)
+    maxRetryRUBudget: 5000,     // Max RU for retries (default: Infinity)
+    
+    // Optional: Custom retry logic
+    shouldRetry: (error, attempt) => {
+      // Custom predicate for when to retry
+      return attempt < 5
+    },
+    
+    // Optional: Monitor retry attempts
+    onRetry: (error, attempt, delayMs) => {
+      console.log(`Retry attempt ${attempt + 1}, waiting ${delayMs}ms`)
+    }
+  }
+})
+```
+
+**Disable Retries:**
+
+```typescript
+const handler = loadCosmosDBSubgraph('MySubgraph', {
+  connectionString: process.env.COSMOS_CONN!,
+  database: 'db',
+  container: 'items',
+  retry: { enabled: false }
+})
+```
+
+**Retry Strategies:**
+
+- `exponential` (default) - Delay doubles each retry: 100ms → 200ms → 400ms → 800ms
+- `linear` - Delay increases linearly: 100ms → 200ms → 300ms → 400ms  
+- `fixed` - Constant delay between retries: 100ms → 100ms → 100ms
+
+---
+
 ### GraphQL Mesh Integration
 
 Use with GraphQL Mesh for a complete GraphQL API:

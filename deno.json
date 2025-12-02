@@ -2,7 +2,7 @@
 	"lock": true,
 
 	"name": "@albedosehen/cosmosdb-schemagen",
-  "version": "0.1.0",
+	 "version": "0.2.0",
   "description": "A data-first schema SDL generator and validator for Azure Cosmos DB, GraphQL, and GraphQL Mesh.",
   "author": "Shon Thomas",
   "license": "MIT",
@@ -25,6 +25,9 @@
   ],
 	"exports": {
 		".": "./mod.ts",
+		"./generic": "./src/adapters/generic.ts",
+		"./mesh": "./src/adapters/mesh.ts",
+		"./src/adapters": "./src/adapters/mod.ts",
 		"./src/errors": "./src/errors/mod.ts",
     "./src/handler": "./src/handler/mod.ts",
     "./src/infer": "./src/infer/mod.ts",
