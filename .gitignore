@@ -5,6 +5,9 @@
 !.vscode/
 !.vscode/**
 
+!docker/
+!docker/**
+
 !docs/
 !docs/**
 
