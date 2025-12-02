@@ -5,6 +5,9 @@
 !.vscode/
 !.vscode/**
 
+!benches/
+!benches/**
+
 !docker/
 !docker/**
 

@@ -2,7 +2,7 @@
 	"lock": true,
 
 	"name": "@albedosehen/cosmosdb-schemagen",
-	 "version": "0.2.0",
+  "version": "0.2.0",
   "description": "A data-first schema SDL generator and validator for Azure Cosmos DB, GraphQL, and GraphQL Mesh.",
   "author": "Shon Thomas",
   "license": "MIT",
@@ -43,7 +43,7 @@
 	},
 	"tasks": {
     "bench": "deno bench --allow-read --allow-write --allow-net --allow-sys",
-    "build:npm": "deno run -A scripts/build_npm.ts",
+    "build": "deno run -A scripts/build_npm.ts",
 		"check": "deno check mod.ts src/",
 		"coverage:lcov": "deno coverage coverage/ --lcov --output=coverage.lcov",
 		"coverage": "deno coverage coverage/ --html",
