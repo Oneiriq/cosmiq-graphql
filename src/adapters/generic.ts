@@ -11,6 +11,7 @@ import { sampleDocuments } from '../handler/document-sampler.ts'
 import { inferSchema } from '../infer/infer-schema.ts'
 import { buildGraphQLSDL } from '../infer/sdl-generator.ts'
 import { ConfigurationError, createErrorContext } from '../errors/mod.ts'
+import { validateRequiredString } from '../utils/validation.ts'
 
 /**
  * Generate GraphQL SDL from CosmosDB container
@@ -63,19 +64,8 @@ import { ConfigurationError, createErrorContext } from '../errors/mod.ts'
  */
 export async function generateSDL(config: GenericSDLConfig): Promise<GenericSDLResult> {
   // Validate configuration
-  if (!config.database) {
-    throw new ConfigurationError(
-      'database name is required',
-      createErrorContext({ component: 'generateSDL' }),
-    )
-  }
-
-  if (!config.container) {
-    throw new ConfigurationError(
-      'container name is required',
-      createErrorContext({ component: 'generateSDL' }),
-    )
-  }
+  const database = validateRequiredString(config.database, 'database', 'generateSDL')
+  const container = validateRequiredString(config.container, 'container', 'generateSDL')
 
   // Create CosmosDB client based on authentication method
   let client: CosmosClient
@@ -108,17 +98,17 @@ export async function generateSDL(config: GenericSDLConfig): Promise<GenericSDLR
   }
 
   try {
-    const container = client.database(config.database).container(config.container)
+    const containerRef = client.database(database).container(container)
 
     // Sample documents from container
     const { documents } = await sampleDocuments({
-      container,
+      container: containerRef,
       sampleSize: config.sampleSize || 500,
       retry: config.retry,
     })
 
     // Infer schema from sampled documents
-    const typeName = config.typeName || config.container
+    const typeName = config.typeName || container
     const schema = inferSchema({
       documents,
       typeName,

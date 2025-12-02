@@ -5,7 +5,7 @@
 
 import { assertRejects } from '@std/assert'
 import { generateSDL } from '../../src/adapters/generic.ts'
-import { ConfigurationError } from '../../src/errors/mod.ts'
+import { ConfigurationError, ValidationError } from '../../src/errors/mod.ts'
 
 Deno.test('generateSDL - validates configuration', async (t) => {
   await t.step('throws error when endpoint provided without credential', async () => {
@@ -23,7 +23,7 @@ Deno.test('generateSDL - validates configuration', async (t) => {
     )
   })
 
-  await t.step('throws ConfigurationError when database missing', async () => {
+  await t.step('throws ValidationError when database missing', async () => {
     await assertRejects(
       async () => {
         await generateSDL({
@@ -32,12 +32,12 @@ Deno.test('generateSDL - validates configuration', async (t) => {
           container: 'items',
         })
       },
-      ConfigurationError,
-      'database name is required',
+      ValidationError,
+      'database is required and cannot be empty',
     )
   })
 
-  await t.step('throws ConfigurationError when container missing', async () => {
+  await t.step('throws ValidationError when container missing', async () => {
     await assertRejects(
       async () => {
         await generateSDL({
@@ -46,8 +46,8 @@ Deno.test('generateSDL - validates configuration', async (t) => {
           container: '',
         })
       },
-      ConfigurationError,
-      'container name is required',
+      ValidationError,
+      'container is required and cannot be empty',
     )
   })
 

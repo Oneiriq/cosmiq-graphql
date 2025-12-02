@@ -4,7 +4,7 @@
  */
 
 import { assertEquals, assertThrows } from '@std/assert'
-import { loadCosmosDBSubgraph } from '../../src/handler/loadCosmosDBSubgraph.ts'
+import { loadCosmosDBSubgraph } from '../../src/adapters/mesh.ts'
 import { ConfigurationError, ValidationError } from '../../src/errors/mod.ts'
 import type { CosmosDBSubgraphConfig } from '../../src/types/handler.ts'
 
@@ -18,7 +18,7 @@ Deno.test('loadCosmosDBSubgraph - validates name is required', () => {
       })
     },
     ValidationError,
-    'Subgraph name is required and must be a string',
+    'Subgraph name is required and cannot be empty',
   )
 })
 
@@ -32,7 +32,7 @@ Deno.test('loadCosmosDBSubgraph - validates name is a string', () => {
       })
     },
     ValidationError,
-    'Subgraph name is required and must be a string',
+    'Subgraph name is required and cannot be empty',
   )
 })
 
@@ -57,8 +57,8 @@ Deno.test('loadCosmosDBSubgraph - validates database is required', () => {
         container: 'testcontainer',
       } as CosmosDBSubgraphConfig)
     },
-    ConfigurationError,
-    'database name is required',
+    ValidationError,
+    'database is required and cannot be empty',
   )
 })
 
@@ -70,8 +70,8 @@ Deno.test('loadCosmosDBSubgraph - validates container is required', () => {
         database: 'testdb',
       } as CosmosDBSubgraphConfig)
     },
-    ConfigurationError,
-    'container name is required',
+    ValidationError,
+    'container is required and cannot be empty',
   )
 })
 
@@ -167,7 +167,7 @@ Deno.test('loadCosmosDBSubgraph - handles empty string name', () => {
       })
     },
     ValidationError,
-    'Subgraph name is required and must be a string',
+    'Subgraph name is required and cannot be empty',
   )
 })
 
@@ -181,7 +181,7 @@ Deno.test('loadCosmosDBSubgraph - handles null name', () => {
       })
     },
     ValidationError,
-    'Subgraph name is required and must be a string',
+    'Subgraph name is required and cannot be empty',
   )
 })
 
@@ -195,7 +195,7 @@ Deno.test('loadCosmosDBSubgraph - handles undefined name', () => {
       })
     },
     ValidationError,
-    'Subgraph name is required and must be a string',
+    'Subgraph name is required and cannot be empty',
   )
 })
 
@@ -208,8 +208,8 @@ Deno.test('loadCosmosDBSubgraph - handles empty database', () => {
         container: 'testcontainer',
       })
     },
-    ConfigurationError,
-    'database name is required',
+    ValidationError,
+    'database is required and cannot be empty',
   )
 })
 
@@ -222,8 +222,8 @@ Deno.test('loadCosmosDBSubgraph - handles empty container', () => {
         container: '',
       })
     },
-    ConfigurationError,
-    'container name is required',
+    ValidationError,
+    'container is required and cannot be empty',
   )
 })
 

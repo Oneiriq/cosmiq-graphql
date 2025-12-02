@@ -15,6 +15,7 @@ import { buildGraphQLSDL } from '../infer/sdl-generator.ts'
 import { buildResolvers } from '../handler/resolver-builder.ts'
 import { createExecutableSchema } from '../handler/schema-executor.ts'
 import { ConfigurationError, createErrorContext } from '../errors/mod.ts'
+import { validateRequiredString } from '../utils/validation.ts'
 
 /**
  * Result of core schema building
@@ -81,19 +82,8 @@ export async function buildCoreSchema(
   config: CosmosDBSubgraphConfig,
 ): Promise<CoreSchemaResult> {
   // Validate configuration
-  if (!config.database) {
-    throw new ConfigurationError(
-      'database name is required',
-      createErrorContext({ component: 'buildCoreSchema' }),
-    )
-  }
-
-  if (!config.container) {
-    throw new ConfigurationError(
-      'container name is required',
-      createErrorContext({ component: 'buildCoreSchema' }),
-    )
-  }
+  const database = validateRequiredString(config.database, 'database', 'buildCoreSchema')
+  const container = validateRequiredString(config.container, 'container', 'buildCoreSchema')
 
   // Create CosmosDB client based on authentication method
   let client: CosmosClient
@@ -128,11 +118,11 @@ export async function buildCoreSchema(
   }
 
   // Get container reference
-  const container = client.database(config.database).container(config.container)
+  const containerRef = client.database(database).container(container)
 
   // Sample documents
   const sampleResult = await sampleDocuments({
-    container,
+    container: containerRef,
     sampleSize: config.sampleSize || 500,
     retry: config.retry,
   })
@@ -153,7 +143,7 @@ export async function buildCoreSchema(
 
   // Build resolvers
   const resolvers = buildResolvers({
-    container,
+    container: containerRef,
     typeName,
     retry: config.retry,
   })
@@ -168,7 +158,7 @@ export async function buildCoreSchema(
     schema,
     sdl,
     client, // CRITICAL: Client stays alive for resolvers
-    container,
+    container: containerRef,
     typeName,
     inferredSchema,
     stats: {

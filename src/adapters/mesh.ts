@@ -7,7 +7,8 @@
 import type { GraphQLSchema } from 'graphql'
 import type { CosmosDBSubgraphConfig, SubgraphHandler } from '../types/handler.ts'
 import { buildCoreSchema } from './core.ts'
-import { ConfigurationError, createErrorContext, ValidationError } from '../errors/mod.ts'
+import { ConfigurationError, createErrorContext } from '../errors/mod.ts'
+import { validateRequiredString } from '../utils/validation.ts'
 
 /**
  * Create a GraphQL Mesh subgraph handler for CosmosDB
@@ -54,12 +55,11 @@ export function loadCosmosDBSubgraph(
   config: CosmosDBSubgraphConfig,
 ): SubgraphHandler {
   // Validate inputs
-  if (!name || typeof name !== 'string') {
-    throw new ValidationError(
-      'Subgraph name is required and must be a string',
-      createErrorContext({ component: 'loadCosmosDBSubgraph' }),
-    )
-  }
+  const subgraphName = validateRequiredString(
+    typeof name === 'string' ? name : undefined,
+    'Subgraph name',
+    'loadCosmosDBSubgraph',
+  )
 
   if (!config.connectionString && !config.endpoint) {
     throw new ConfigurationError(
@@ -68,22 +68,11 @@ export function loadCosmosDBSubgraph(
     )
   }
 
-  if (!config.database) {
-    throw new ConfigurationError(
-      'database name is required',
-      createErrorContext({ component: 'loadCosmosDBSubgraph' }),
-    )
-  }
-
-  if (!config.container) {
-    throw new ConfigurationError(
-      'container name is required',
-      createErrorContext({ component: 'loadCosmosDBSubgraph' }),
-    )
-  }
+  validateRequiredString(config.database, 'database', 'loadCosmosDBSubgraph')
+  validateRequiredString(config.container, 'container', 'loadCosmosDBSubgraph')
 
   return () => ({
-    name,
+    name: subgraphName,
     schema$: buildMeshSchema(config),
   })
 }

@@ -4,6 +4,7 @@
  * @module
  */
 
+import type { GraphQLFieldResolver } from 'graphql'
 import { buildSchema, GraphQLObjectType, GraphQLSchema } from 'graphql'
 import type { Resolvers } from '../types/handler.ts'
 
@@ -84,16 +85,15 @@ function attachResolversToType({
   resolvers,
 }: {
   type: GraphQLObjectType
-  resolvers: Record<string, (source: unknown, args: unknown, context: unknown) => unknown>
+  resolvers: Record<string, GraphQLFieldResolver<unknown, unknown>>
 }): void {
   const fields = type.getFields()
 
   for (const [fieldName, resolver] of Object.entries(resolvers)) {
     const field = fields[fieldName]
     if (field) {
-      // Attach resolver to field
-      // deno-lint-ignore no-explicit-any
-      field.resolve = resolver as any
+      // Attach resolver to field - properly typed as GraphQLFieldResolver
+      field.resolve = resolver
     }
   }
 }

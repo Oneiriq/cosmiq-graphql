@@ -4,7 +4,6 @@
  * @module
  */
 
-export { loadCosmosDBSubgraph } from './loadCosmosDBSubgraph.ts'
 export { parseConnectionConfig, parseConnectionString } from './connection-parser.ts'
 export { sampleDocuments } from './document-sampler.ts'
 export { buildResolvers } from './resolver-builder.ts'
