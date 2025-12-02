@@ -1,84 +1,94 @@
 /**
  * Seeds Cosmos DB with initial data for testing.
- * 
- * ./data/db1_files.json: Initial dataset for db1 in the files container (partition key "/pk")
- * ./data/db1_users.json: Initial dataset for db1 in the users container (partition key "/pk")
- * ./data/db1_listings.json: Initial dataset for db1 in the listings container (partition key "/pk")
  *
- * It should generate data in a random yet consistent manner for testing the cosmosdb-schemagen tool.
+ * Generates users, listings, and files with deterministic data.
+ * Supports incremental generation and idempotent seeding.
  *
- * I'll want to be able to generate data incrementally (e.g. add 100 more users) it does not need to delete existing data.
+ * Usage:
+ *  deno run --allow-read --allow-write --allow-net --unsafely-ignore-certificate-errors=localhost,127.0.0.1 scripts/seed/seed.ts [OPTIONS]
  *
- * It should be idempotent - running it multiple times should not create duplicate entries.
- *
- * Place any utils or helper functions in scripts/seed/utils.ts and separate data generation logic into scripts/seed/generators/users.ts, scripts/seed/generators/files.ts, scripts/seed/generators/listings.ts
- *
+ * Options:
+ * --files <count>      Number of files to generate (default: based on listings)
+ * --users <count>      Number of users to generate (default: 50)
+ * --listings <count>   Number of listings to generate (default: 200)
+ * --seed-db            Seed directly to CosmosDB emulator at localhost:8081
+ * --help, -h           Show help message
  */
 
-import { generateUser, generateListing, generateFile } from './generators/mod.ts';
+import { CosmosClient } from '@azure/cosmos'
+import { generateFile, generateListing, generateUser } from './generators/mod.ts'
+import {
+  BadRequestError,
+  ConflictError,
+  createErrorContext,
+  InternalServerError,
+  RateLimitError,
+  ServiceUnavailableError,
+  UnauthorizedError,
+} from '../../src/errors/mod.ts'
 
 // =============================================================================
 // TYPES
 // =============================================================================
 
 type UserDocument = {
-  id: string;
-  pk: string;
-  type: string;
-  [key: string]: unknown;
-};
+  id: string
+  pk: string
+  type: string
+  [key: string]: unknown
+}
 
 type ListingDocument = {
-  id: string;
-  pk: string;
-  type: string;
-  [key: string]: unknown;
-};
+  id: string
+  pk: string
+  type: string
+  [key: string]: unknown
+}
 
 type FileDocument = {
-  id: string;
-  pk: string;
-  type: string;
-  [key: string]: unknown;
-};
+  id: string
+  pk: string
+  type: string
+  [key: string]: unknown
+}
 
 type ExistingData = {
-  userIds: string[];
-  listingIds: string[];
-  fileIds: string[];
-  maxUserIndex: number;
-  maxListingIndex: number;
-  maxFileIndex: number;
-};
+  userIds: string[]
+  listingIds: string[]
+  fileIds: string[]
+  maxUserIndex: number
+  maxListingIndex: number
+  maxFileIndex: number
+}
 
 type SeedData = {
-  users: UserDocument[];
-  listings: ListingDocument[];
-  files: FileDocument[];
-};
+  users: UserDocument[]
+  listings: ListingDocument[]
+  files: FileDocument[]
+}
 
 type GenerationOptions = {
-  userCount: number;
-  listingCount: number;
-  existingUserIds: string[];
-  existingListingIds: string[];
-  startUserIndex: number;
-  startListingIndex: number;
-  baseDate: Date;
-};
+  userCount: number
+  listingCount: number
+  existingUserIds: string[]
+  existingListingIds: string[]
+  startUserIndex: number
+  startListingIndex: number
+  baseDate: Date
+}
 
 // =============================================================================
 // CONSTANTS
 // =============================================================================
 
-const DATA_DIR = './scripts/seed/data';
-const USERS_FILE = `${DATA_DIR}/db1_users.json`;
-const LISTINGS_FILE = `${DATA_DIR}/db1_listings.json`;
-const FILES_FILE = `${DATA_DIR}/db1_files.json`;
+const DATA_DIR = './scripts/seed/data'
+const USERS_FILE = `${DATA_DIR}/db1_users.json`
+const LISTINGS_FILE = `${DATA_DIR}/db1_listings.json`
+const FILES_FILE = `${DATA_DIR}/db1_files.json`
 
-const DEFAULT_USER_COUNT = 50;
-const DEFAULT_LISTING_COUNT = 200;
-const DEFAULT_BASE_DATE = new Date('2024-01-01');
+const DEFAULT_USER_COUNT = 50
+const DEFAULT_LISTING_COUNT = 200
+const DEFAULT_BASE_DATE = new Date('2024-01-01')
 
 // =============================================================================
 // FILE I/O FUNCTIONS
@@ -98,46 +108,46 @@ async function loadExistingData(): Promise<ExistingData> {
     maxUserIndex: -1,
     maxListingIndex: -1,
     maxFileIndex: -1,
-  };
+  }
 
   try {
-    const usersText = await Deno.readTextFile(USERS_FILE);
-    const users = JSON.parse(usersText) as UserDocument[];
-    result.userIds = users.map((u) => u.id);
-    
+    const usersText = await Deno.readTextFile(USERS_FILE)
+    const users = JSON.parse(usersText) as UserDocument[]
+    result.userIds = users.map((u) => u.id)
+
     // Users are generated sequentially by index, so count determines max index
     // Registered users: usr_1000, usr_1001, etc. (indices 0, 1, 2, ...)
     // Anonymous users: anon_session_* (every 5th index: 0, 5, 10, ...)
     // The max index is simply the count of users - 1
     if (users.length > 0) {
-      result.maxUserIndex = users.length - 1;
+      result.maxUserIndex = users.length - 1
     }
   } catch {
     // File doesn't exist or is invalid, start fresh
   }
 
   try {
-    const listingsText = await Deno.readTextFile(LISTINGS_FILE);
-    const listings = JSON.parse(listingsText) as ListingDocument[];
-    result.listingIds = listings.map((l) => l.id);
-    
+    const listingsText = await Deno.readTextFile(LISTINGS_FILE)
+    const listings = JSON.parse(listingsText) as ListingDocument[]
+    result.listingIds = listings.map((l) => l.id)
+
     // Listings are also generated sequentially by index
     if (listings.length > 0) {
-      result.maxListingIndex = listings.length - 1;
+      result.maxListingIndex = listings.length - 1
     }
   } catch {
     // File doesn't exist or is invalid, start fresh
   }
 
   try {
-    const filesText = await Deno.readTextFile(FILES_FILE);
-    const files = JSON.parse(filesText) as FileDocument[];
-    result.fileIds = files.map((f) => f.id);
+    const filesText = await Deno.readTextFile(FILES_FILE)
+    const files = JSON.parse(filesText) as FileDocument[]
+    result.fileIds = files.map((f) => f.id)
   } catch {
     // File doesn't exist or is invalid, start fresh
   }
 
-  return result;
+  return result
 }
 
 /**
@@ -147,72 +157,69 @@ async function loadExistingData(): Promise<ExistingData> {
  * @param data - Seed data containing users, listings, and files
  */
 async function writeJsonFiles(data: SeedData): Promise<void> {
-  // Load existing data
-  const existing = await loadExistingData();
-
   // Combine with new data (avoiding duplicates)
-  const allUsers: UserDocument[] = [];
-  const allListings: ListingDocument[] = [];
-  const allFiles: FileDocument[] = [];
+  const allUsers: UserDocument[] = []
+  const allListings: ListingDocument[] = []
+  const allFiles: FileDocument[] = []
 
   // Load existing users
   try {
-    const usersText = await Deno.readTextFile(USERS_FILE);
-    const existingUsers = JSON.parse(usersText) as UserDocument[];
-    allUsers.push(...existingUsers);
+    const usersText = await Deno.readTextFile(USERS_FILE)
+    const existingUsers = JSON.parse(usersText) as UserDocument[]
+    allUsers.push(...existingUsers)
   } catch {
     // File doesn't exist, start with empty
   }
 
   // Load existing listings
   try {
-    const listingsText = await Deno.readTextFile(LISTINGS_FILE);
-    const existingListings = JSON.parse(listingsText) as ListingDocument[];
-    allListings.push(...existingListings);
+    const listingsText = await Deno.readTextFile(LISTINGS_FILE)
+    const existingListings = JSON.parse(listingsText) as ListingDocument[]
+    allListings.push(...existingListings)
   } catch {
     // File doesn't exist, start with empty
   }
 
   // Load existing files
   try {
-    const filesText = await Deno.readTextFile(FILES_FILE);
-    const existingFiles = JSON.parse(filesText) as FileDocument[];
-    allFiles.push(...existingFiles);
+    const filesText = await Deno.readTextFile(FILES_FILE)
+    const existingFiles = JSON.parse(filesText) as FileDocument[]
+    allFiles.push(...existingFiles)
   } catch {
     // File doesn't exist, start with empty
   }
 
   // Add new data (avoiding duplicates by ID)
-  const existingUserIds = new Set(allUsers.map((u) => u.id));
-  const existingListingIds = new Set(allListings.map((l) => l.id));
-  const existingFileIds = new Set(allFiles.map((f) => f.id));
+  const existingUserIds = new Set(allUsers.map((u) => u.id))
+  const existingListingIds = new Set(allListings.map((l) => l.id))
+  const existingFileIds = new Set(allFiles.map((f) => f.id))
 
   for (const user of data.users) {
     if (!existingUserIds.has(user.id)) {
-      allUsers.push(user);
+      allUsers.push(user)
     }
   }
 
   for (const listing of data.listings) {
     if (!existingListingIds.has(listing.id)) {
-      allListings.push(listing);
+      allListings.push(listing)
     }
   }
 
   for (const file of data.files) {
     if (!existingFileIds.has(file.id)) {
-      allFiles.push(file);
+      allFiles.push(file)
     }
   }
 
   // Write to files with pretty printing
-  await Deno.writeTextFile(USERS_FILE, JSON.stringify(allUsers, null, 2));
-  await Deno.writeTextFile(LISTINGS_FILE, JSON.stringify(allListings, null, 2));
-  await Deno.writeTextFile(FILES_FILE, JSON.stringify(allFiles, null, 2));
+  await Deno.writeTextFile(USERS_FILE, JSON.stringify(allUsers, null, 2))
+  await Deno.writeTextFile(LISTINGS_FILE, JSON.stringify(allListings, null, 2))
+  await Deno.writeTextFile(FILES_FILE, JSON.stringify(allFiles, null, 2))
 
-  console.log(`\n✓ Wrote ${allUsers.length} users to ${USERS_FILE}`);
-  console.log(`✓ Wrote ${allListings.length} listings to ${LISTINGS_FILE}`);
-  console.log(`✓ Wrote ${allFiles.length} files to ${FILES_FILE}`);
+  console.log(`\n✓ Wrote ${allUsers.length} users to ${USERS_FILE}`)
+  console.log(`✓ Wrote ${allListings.length} listings to ${LISTINGS_FILE}`)
+  console.log(`✓ Wrote ${allFiles.length} files to ${FILES_FILE}`)
 }
 
 // =============================================================================
@@ -221,7 +228,7 @@ async function writeJsonFiles(data: SeedData): Promise<void> {
 
 /**
  * Generate seed data for users, listings, and files.
- * 
+ *
  * @param options - Generation options including counts and indices
  * @returns Generated seed data
  */
@@ -233,55 +240,55 @@ function generateSeedData(options: GenerationOptions): SeedData {
     startUserIndex,
     startListingIndex,
     baseDate,
-  } = options;
+  } = options
 
-  const users: UserDocument[] = [];
-  const listings: ListingDocument[] = [];
-  const files: FileDocument[] = [];
+  const users: UserDocument[] = []
+  const listings: ListingDocument[] = []
+  const files: FileDocument[] = []
 
   // Generate users
-  console.log(`\nGenerating ${userCount} users (starting at index ${startUserIndex})...`);
+  console.log(`\nGenerating ${userCount} users (starting at index ${startUserIndex})...`)
   for (let i = 0; i < userCount; i++) {
-    const userIndex = startUserIndex + i;
-    const user = generateUser({ index: userIndex, baseDate });
-    users.push(user as unknown as UserDocument);
+    const userIndex = startUserIndex + i
+    const user = generateUser({ index: userIndex, baseDate })
+    users.push(user as unknown as UserDocument)
   }
 
   // Collect all user IDs (existing + new)
-  const allUserIds = [...existingUserIds, ...users.map((u) => u.id)];
+  const allUserIds = [...existingUserIds, ...users.map((u) => u.id)]
 
   // Generate listings and files
   if (listingCount > 0) {
-    console.log(`Generating ${listingCount} listings (starting at index ${startListingIndex})...`);
-    
+    console.log(`Generating ${listingCount} listings (starting at index ${startListingIndex})...`)
+
     // Global file index counter for sequential file generation
     // The file generator uses index % 10 to determine image vs document (90% images, 10% documents)
-    let globalFileIndex = 0;
-    
+    let globalFileIndex = 0
+
     for (let i = 0; i < listingCount; i++) {
-      const listingIndex = startListingIndex + i;
+      const listingIndex = startListingIndex + i
       const listing = generateListing({
         index: listingIndex,
         baseDate,
         userIds: allUserIds,
-      });
-      listings.push(listing as unknown as ListingDocument);
+      })
+      listings.push(listing as unknown as ListingDocument)
 
       // Generate files for this listing
-      const imageCount = (listingIndex % 4) + 2; // 2-5 images per listing
-      const shouldHaveDocument = listingIndex % 10 === 0; // 10% of listings have a document
+      const imageCount = (listingIndex % 4) + 2 // 2-5 images per listing
+      const shouldHaveDocument = listingIndex % 10 === 0 // 10% of listings have a document
 
       // Get uploader info from listing
-      const uploaderId = (listing as { sellerId: string }).sellerId;
-      const uploaderType = (listing as { sellerType: 'registered' | 'anonymous' }).sellerType;
+      const uploaderId = (listing as { sellerId: string }).sellerId
+      const uploaderType = (listing as { sellerType: 'registered' | 'anonymous' }).sellerType
 
       // Generate images
       for (let j = 0; j < imageCount; j++) {
         // Skip indices that would generate documents (every 10th index)
         while (globalFileIndex % 10 === 0) {
-          globalFileIndex++;
+          globalFileIndex++
         }
-        
+
         const file = generateFile({
           index: globalFileIndex,
           baseDate,
@@ -290,18 +297,18 @@ function generateSeedData(options: GenerationOptions): SeedData {
           uploaderType,
           isPrimary: j === 0,
           displayOrder: j + 1,
-        });
-        files.push(file as unknown as FileDocument);
-        globalFileIndex++;
+        })
+        files.push(file as unknown as FileDocument)
+        globalFileIndex++
       }
 
       // Generate document if applicable (only for listings at indices 0, 10, 20, etc.)
       if (shouldHaveDocument) {
         // Find next document index (index % 10 === 0)
         while (globalFileIndex % 10 !== 0) {
-          globalFileIndex++;
+          globalFileIndex++
         }
-        
+
         const file = generateFile({
           index: globalFileIndex,
           baseDate,
@@ -310,41 +317,255 @@ function generateSeedData(options: GenerationOptions): SeedData {
           uploaderType,
           isPrimary: false,
           displayOrder: imageCount + 1,
-        });
-        files.push(file as unknown as FileDocument);
-        globalFileIndex++;
+        })
+        files.push(file as unknown as FileDocument)
+        globalFileIndex++
       }
     }
   }
 
-  console.log(`Generated ${files.length} files for ${listingCount} listings`);
+  console.log(`Generated ${files.length} files for ${listingCount} listings`)
 
-  return { users, listings, files };
+  return { users, listings, files }
+}
+
+// =============================================================================
+// COSMOSDB CLIENT UTILITIES
+// =============================================================================
+
+type CosmosDBConfig = {
+  endpoint: string
+  primaryKey: string
+  database: string
 }
 
 /**
- * Seed data directly to CosmosDB (optional feature).
- * TODO: Implement CosmosDB seeding using connection info from agent.md
- * 
- * @param _data - Seed data to insert into CosmosDB
+ * Insert a single document into CosmosDB container using @azure/cosmos client.
+ *
+ * @param client - CosmosClient instance
+ * @param database - Database instance
+ * @param containerName - Container name
+ * @param document - Document to insert
+ * @returns Inserted document or null if conflict (already exists)
  */
-async function seedToCosmosDB(_data: SeedData): Promise<void> {
-  // TODO: Implement CosmosDB seeding
-  // Connection info from agent.md:
-  // URI: https://localhost:8081
-  // Primary Key: C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==
-  // Database: db1
-  // Containers: files, users, listings
-  // 
-  // Implementation steps:
-  // 1. Connect to CosmosDB using Azure SDK or REST API
-  // 2. Bulk insert users into 'users' container
-  // 3. Bulk insert listings into 'listings' container
-  // 4. Bulk insert files into 'files' container
-  // 5. Handle errors gracefully
-  
-  console.log('\n⚠ CosmosDB seeding not yet implemented (TODO)');
-  console.log('Use --seed-db flag to enable when implemented');
+async function insertDocument({
+  client,
+  database,
+  containerName,
+  document,
+}: {
+  client: CosmosClient
+  database: any
+  containerName: string
+  document: Record<string, unknown>
+}): Promise<Record<string, unknown> | null> {
+  const container = database.container(containerName)
+
+  try {
+    const { resource } = await container.items.upsert(document)
+    return resource
+  } catch (error: any) {
+    if (error.code === 409) {
+      return null
+    }
+
+    const context = createErrorContext({
+      component: 'insertDocument',
+      metadata: {
+        container: containerName,
+        documentId: document.id,
+        errorCode: error.code,
+        errorType: error.constructor?.name || 'Unknown',
+        errorMessage: error.message || String(error)
+      },
+    })
+
+    switch (error.code) {
+      case 400:
+        throw new BadRequestError({ message: `Bad request: ${error.message}`, context })
+      case 401:
+        throw new UnauthorizedError({ message: `Unauthorized: ${error.message}`, context })
+      case 429:
+        throw new RateLimitError({ message: `Rate limit exceeded: ${error.message}`, context })
+      case 500:
+        throw new InternalServerError({ message: `Internal server error: ${error.message}`, context })
+      case 503:
+        throw new ServiceUnavailableError({ message: `Service unavailable: ${error.message}`, context })
+      default:
+        throw new InternalServerError({
+          message: `Failed to insert document: ${error.message}`,
+          context,
+        })
+    }
+  }
+}
+
+/**
+ * Bulk insert documents into a CosmosDB container with concurrency control.
+ *
+ * @param client - CosmosClient instance
+ * @param database - Database instance
+ * @param containerName - Container name
+ * @param documents - Documents to insert
+ * @param batchSize - Number of concurrent inserts
+ * @returns Statistics about the insert operation
+ */
+async function bulkInsertDocuments({
+  client,
+  database,
+  containerName,
+  documents,
+  batchSize = 10,
+}: {
+  client: CosmosClient
+  database: any
+  containerName: string
+  documents: Record<string, unknown>[]
+  batchSize?: number
+}): Promise<{ inserted: number; skipped: number; failed: number }> {
+  let inserted = 0
+  let skipped = 0
+  let failed = 0
+
+  for (let i = 0; i < documents.length; i += batchSize) {
+    const batch = documents.slice(i, i + batchSize)
+    const results = await Promise.allSettled(
+      batch.map((doc) => insertDocument({ client, database, containerName, document: doc })),
+    )
+
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        if (result.value === null) {
+          skipped++
+        } else {
+          inserted++
+        }
+      } else {
+        failed++
+        console.error(`  ✗ Failed to insert document: ${result.reason.message}`)
+      }
+    }
+
+    const progress = Math.min(i + batchSize, documents.length)
+    console.log(`  Progress: ${progress}/${documents.length} documents processed`)
+  }
+
+  return { inserted, skipped, failed }
+}
+
+/**
+ * Seed data directly to CosmosDB using @azure/cosmos client library.
+ *
+ * @param data - Seed data to insert into CosmosDB
+ */
+async function seedToCosmosDB(data: SeedData): Promise<void> {
+  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  console.log('  Seeding CosmosDB')
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
+  const config: CosmosDBConfig = {
+    endpoint: 'https://localhost:8081',
+    primaryKey: 'C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==',
+    database: 'db1',
+  }
+
+  console.log(`\nEndpoint: ${config.endpoint}`)
+  console.log(`Database: ${config.database}\n`)
+
+  const client = new CosmosClient({
+    endpoint: config.endpoint,
+    key: config.primaryKey,
+  })
+  const database = client.database(config.database)
+
+  // Verify containers exist before attempting to seed
+  console.log('Verifying containers exist...')
+  const requiredContainers = ['users', 'listings', 'files']
+  try {
+    for (const containerName of requiredContainers) {
+      const container = database.container(containerName)
+      await container.read()
+      console.log(`  ✓ Container '${containerName}' exists`)
+    }
+  } catch (error: any) {
+    const context = createErrorContext({
+      component: 'seedToCosmosDB',
+      metadata: { error: error.message },
+    })
+    throw new InternalServerError({
+      message: `Failed to verify containers. Ensure the database and containers exist in the CosmosDB emulator. Error: ${error.message}`,
+      context,
+    })
+  }
+
+  console.log('')
+
+  try {
+    console.log(`Seeding users container (${data.users.length} documents)...`)
+    const usersResult = await bulkInsertDocuments({
+      client,
+      database,
+      containerName: 'users',
+      documents: data.users,
+      batchSize: 10,
+    })
+    console.log(`  ✓ Inserted: ${usersResult.inserted}`)
+    console.log(`  ⊙ Skipped (already exist): ${usersResult.skipped}`)
+    if (usersResult.failed > 0) {
+      console.log(`  ✗ Failed: ${usersResult.failed}`)
+    }
+
+    console.log(`\nSeeding listings container (${data.listings.length} documents)...`)
+    const listingsResult = await bulkInsertDocuments({
+      client,
+      database,
+      containerName: 'listings',
+      documents: data.listings,
+      batchSize: 10,
+    })
+    console.log(`  ✓ Inserted: ${listingsResult.inserted}`)
+    console.log(`  ⊙ Skipped (already exist): ${listingsResult.skipped}`)
+    if (listingsResult.failed > 0) {
+      console.log(`  ✗ Failed: ${listingsResult.failed}`)
+    }
+
+    console.log(`\nSeeding files container (${data.files.length} documents)...`)
+    const filesResult = await bulkInsertDocuments({
+      client,
+      database,
+      containerName: 'files',
+      documents: data.files,
+      batchSize: 10,
+    })
+    console.log(`  ✓ Inserted: ${filesResult.inserted}`)
+    console.log(`  ⊙ Skipped (already exist): ${filesResult.skipped}`)
+    if (filesResult.failed > 0) {
+      console.log(`  ✗ Failed: ${filesResult.failed}`)
+    }
+
+    const totalInserted = usersResult.inserted + listingsResult.inserted + filesResult.inserted
+    const totalSkipped = usersResult.skipped + listingsResult.skipped + filesResult.skipped
+    const totalFailed = usersResult.failed + listingsResult.failed + filesResult.failed
+
+    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log(`  Summary: ${totalInserted} inserted, ${totalSkipped} skipped, ${totalFailed} failed`)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  } catch (error) {
+    const context = createErrorContext({
+      component: 'seedToCosmosDB',
+      metadata: { error: error instanceof Error ? error.message : String(error) },
+    })
+
+    if (error instanceof ConflictError) {
+      console.log('\n⚠ Some documents already exist (conflict). This is expected for idempotent seeding.')
+      return
+    }
+
+    throw new InternalServerError({
+      message: `Failed to seed CosmosDB: ${error instanceof Error ? error.message : String(error)}`,
+      context,
+    })
+  }
 }
 
 // =============================================================================
@@ -352,15 +573,15 @@ async function seedToCosmosDB(_data: SeedData): Promise<void> {
 // =============================================================================
 
 type CliArgs = {
-  users?: number;
-  listings?: number;
-  seedDb: boolean;
-  help: boolean;
-};
+  users?: number
+  listings?: number
+  seedDb: boolean
+  help: boolean
+}
 
 /**
  * Parse command-line arguments.
- * 
+ *
  * @param args - Array of command-line arguments
  * @returns Parsed CLI arguments
  */
@@ -368,31 +589,31 @@ function parseArgs(args: string[]): CliArgs {
   const result: CliArgs = {
     seedDb: false,
     help: false,
-  };
+  }
 
   for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
+    const arg = args[i]
 
     if (arg === '--help' || arg === '-h') {
-      result.help = true;
+      result.help = true
     } else if (arg === '--seed-db') {
-      result.seedDb = true;
+      result.seedDb = true
     } else if (arg === '--users') {
-      const nextArg = args[i + 1];
+      const nextArg = args[i + 1]
       if (nextArg && !nextArg.startsWith('--')) {
-        result.users = parseInt(nextArg);
-        i++; // Skip next arg
+        result.users = parseInt(nextArg)
+        i++ // Skip next arg
       }
     } else if (arg === '--listings') {
-      const nextArg = args[i + 1];
+      const nextArg = args[i + 1]
       if (nextArg && !nextArg.startsWith('--')) {
-        result.listings = parseInt(nextArg);
-        i++; // Skip next arg
+        result.listings = parseInt(nextArg)
+        i++ // Skip next arg
       }
     }
   }
 
-  return result;
+  return result
 }
 
 /**
@@ -403,12 +624,12 @@ function showHelp(): void {
 CosmosDB Seed Data Generator
 
 USAGE:
-  deno run --allow-read --allow-write scripts/seed/seed.ts [OPTIONS]
+  deno run --allow-read --allow-write --allow-net --unsafely-ignore-certificate-errors=localhost,127.0.0.1 scripts/seed/seed.ts [OPTIONS]
 
 OPTIONS:
   --users <count>      Number of users to generate (default: 50)
   --listings <count>   Number of listings to generate (default: 200)
-  --seed-db            Seed directly to CosmosDB (not yet implemented)
+  --seed-db            Seed directly to CosmosDB emulator at localhost:8081
   --help, -h           Show this help message
 
 EXAMPLES:
@@ -424,8 +645,8 @@ EXAMPLES:
   # Generate custom counts
   deno run --allow-read --allow-write scripts/seed/seed.ts --users 75 --listings 400
 
-  # Seed to CosmosDB (when implemented)
-  deno run --allow-read --allow-write --allow-net scripts/seed/seed.ts --seed-db
+  # Seed to CosmosDB emulator
+  deno run --allow-read --allow-write --allow-net --unsafely-ignore-certificate-errors=localhost,127.0.0.1 scripts/seed/seed.ts --seed-db
 
 OUTPUT:
   - ${USERS_FILE}
@@ -433,10 +654,12 @@ OUTPUT:
   - ${FILES_FILE}
 
 NOTES:
-  - Script is idempotent - running multiple times appends new data
+  - Script is idempotent - running multiple times handles conflicts automatically
   - Data generation is deterministic based on index
   - Each listing gets 2-5 images and 10% get a document file
-  `);
+  - CosmosDB seeding uses @azure/cosmos client library
+  - Requires --unsafely-ignore-certificate-errors flag for emulator connection
+  `)
 }
 
 // =============================================================================
@@ -447,34 +670,34 @@ NOTES:
  * Main execution function.
  */
 async function main(): Promise<void> {
-  const args = parseArgs(Deno.args);
+  const args = parseArgs(Deno.args)
 
   if (args.help) {
-    showHelp();
-    return;
+    showHelp()
+    return
   }
 
-  console.log('═══════════════════════════════════════════════════════════');
-  console.log('  CosmosDB Seed Data Generator');
-  console.log('═══════════════════════════════════════════════════════════');
+  console.log('═══════════════════════════════════════════════════════════')
+  console.log('  CosmosDB Seed Data Generator')
+  console.log('═══════════════════════════════════════════════════════════')
 
   // Load existing data for idempotency
-  console.log('\nLoading existing data...');
-  const existing = await loadExistingData();
-  console.log(`Found ${existing.userIds.length} existing users`);
-  console.log(`Found ${existing.listingIds.length} existing listings`);
-  console.log(`Found ${existing.fileIds.length} existing files`);
+  console.log('\nLoading existing data...')
+  const existing = await loadExistingData()
+  console.log(`Found ${existing.userIds.length} existing users`)
+  console.log(`Found ${existing.listingIds.length} existing listings`)
+  console.log(`Found ${existing.fileIds.length} existing files`)
 
   // Determine generation parameters
-  const userCount = args.users ?? DEFAULT_USER_COUNT;
-  const listingCount = args.listings ?? DEFAULT_LISTING_COUNT;
-  const startUserIndex = existing.maxUserIndex + 1;
-  const startListingIndex = existing.maxListingIndex + 1;
+  const userCount = args.users ?? DEFAULT_USER_COUNT
+  const listingCount = args.listings ?? DEFAULT_LISTING_COUNT
+  const startUserIndex = existing.maxUserIndex + 1
+  const startListingIndex = existing.maxListingIndex + 1
 
-  console.log('\nGeneration plan:');
-  console.log(`- Users: ${userCount} (indices ${startUserIndex} to ${startUserIndex + userCount - 1})`);
-  console.log(`- Listings: ${listingCount} (indices ${startListingIndex} to ${startListingIndex + listingCount - 1})`);
-  console.log(`- Base date: ${DEFAULT_BASE_DATE.toISOString().split('T')[0]}`);
+  console.log('\nGeneration plan:')
+  console.log(`- Users: ${userCount} (indices ${startUserIndex} to ${startUserIndex + userCount - 1})`)
+  console.log(`- Listings: ${listingCount} (indices ${startListingIndex} to ${startListingIndex + listingCount - 1})`)
+  console.log(`- Base date: ${DEFAULT_BASE_DATE.toISOString().split('T')[0]}`)
 
   // Generate seed data
   const data = generateSeedData({
@@ -485,22 +708,22 @@ async function main(): Promise<void> {
     startUserIndex,
     startListingIndex,
     baseDate: DEFAULT_BASE_DATE,
-  });
+  })
 
   // Write to JSON files
-  await writeJsonFiles(data);
+  await writeJsonFiles(data)
 
   // Optionally seed to CosmosDB
   if (args.seedDb) {
-    await seedToCosmosDB(data);
+    await seedToCosmosDB(data)
   }
 
-  console.log('\n═══════════════════════════════════════════════════════════');
-  console.log('  ✓ Seed data generation complete!');
-  console.log('═══════════════════════════════════════════════════════════\n');
+  console.log('\n═══════════════════════════════════════════════════════════')
+  console.log('  ✓ Seed data generation complete!')
+  console.log('═══════════════════════════════════════════════════════════\n')
 }
 
 // Run main function
 if (import.meta.main) {
-  await main();
+  await main()
 }

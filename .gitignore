@@ -35,3 +35,7 @@
 !CHANGELOG.md
 !README.md
 !mod.ts
+
+// Do not include generated data
+scripts/seed/data/
+scripts/seed/data/**

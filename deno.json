@@ -52,7 +52,11 @@
 		"lint": "deno lint",
 		"test": "deno test --allow-read --allow-write --allow-net --allow-sys --allow-env -q",
 		"test:coverage": "deno test --allow-read --allow-write --allow-net --allow-sys --allow-env --coverage=coverage/ -q",
-		"test:watch": "deno test --allow-read --allow-write --allow-net --allow-sys --allow-env --watch -q"
+		"test:watch": "deno test --allow-read --allow-write --allow-net --allow-sys --allow-env --watch -q",
+    "seed": "deno run --allow-read --allow-write --allow-net --unsafely-ignore-certificate-errors=localhost,127.0.0.1 scripts/seed/seed.ts --seed-db",
+    "seed:files": "deno run --allow-read --allow-write --allow-net --unsafely-ignore-certificate-errors=localhost,127.0.0.1 scripts/seed/seed.ts --files 100 --seed-db",
+    "seed:listings": "deno run --allow-read --allow-write --allow-net --unsafely-ignore-certificate-errors=localhost,127.0.0.1 scripts/seed/seed.ts --listings 100 --seed-db",
+    "seed:users": "deno run --allow-read --allow-write --allow-net --unsafely-ignore-certificate-errors=localhost,127.0.0.1 scripts/seed/seed.ts --users 100 --seed-db"
 	},
 	"lint": {
 		"include": ["src/"],
