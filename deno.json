@@ -44,9 +44,9 @@
 		"fmt:check": "deno fmt --check",
 		"fmt": "deno fmt",
 		"lint": "deno lint",
-		"test": "deno test --allow-read --allow-write --allow-net --allow-sys -q",
-		"test:coverage": "deno test --allow-read --allow-write --allow-net --allow-sys --coverage=coverage/ -q",
-		"test:watch": "deno test --allow-read --allow-write --allow-net --allow-sys --watch -q"
+		"test": "deno test --allow-read --allow-write --allow-net --allow-sys --allow-env -q",
+		"test:coverage": "deno test --allow-read --allow-write --allow-net --allow-sys --allow-env --coverage=coverage/ -q",
+		"test:watch": "deno test --allow-read --allow-write --allow-net --allow-sys --allow-env --watch -q"
 	},
 	"lint": {
 		"include": ["src/"],

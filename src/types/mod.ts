@@ -5,7 +5,7 @@
  */
 
 // Re-export all CosmosDB-specific types
-export type { CosmosDBDocument, JSONValue, PartitionKeyPattern, PrimitiveType, QueryResult } from './cosmosdb.ts'
+export type { CosmosDBDocument, JSONValue, PrimitiveType, QueryResult } from './cosmosdb.ts'
 
 // Re-export all inference types
 export type {

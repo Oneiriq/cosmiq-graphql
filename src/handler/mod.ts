@@ -4,8 +4,12 @@
  * @module
  */
 
+export { loadCosmosDBSubgraph } from './loadCosmosDBSubgraph.ts'
 export { parseConnectionConfig, parseConnectionString } from './connection-parser.ts'
 export { sampleDocuments } from './document-sampler.ts'
 export { buildResolvers } from './resolver-builder.ts'
+export { createExecutableSchema } from './schema-executor.ts'
 export type { BuildResolversOptions } from './resolver-builder.ts'
 export type { SampleDocumentsOptions } from './document-sampler.ts'
+export type { CreateExecutableSchemaOptions } from './schema-executor.ts'
+export type { CosmosDBSubgraphConfig, ResolverFn, Resolvers, SubgraphHandler } from '../types/handler.ts'
