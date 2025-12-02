@@ -113,14 +113,14 @@ async function buildSchema(config: CosmosDBSubgraphConfig) {
       .database(config.database)
       .container(config.container)
 
-    const documents = await sampleDocuments({
+    const sampleResult = await sampleDocuments({
       container,
       sampleSize: config.sampleSize || 500,
     })
 
     const typeName = config.typeName || config.container
     const schema = inferSchema({
-      documents,
+      documents: sampleResult.documents,
       typeName,
       config: config.typeSystem,
     })
