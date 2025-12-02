@@ -12,7 +12,7 @@ await build({
   },
   package: {
     name: '@albedosehen/cosmosdb-schemagen',
-    version: Deno.args[0] || '0.1.0',
+    version: Deno.args[0] || '0.2.0',
     description: 'A data-first schema SDL generator and validator for Azure Cosmos DB and GraphQL.',
     license: 'MIT',
     author: {
@@ -44,10 +44,12 @@ await build({
     engines: {
       node: '>=18.0.0'
     },
-    dependencies: { },
+    dependencies: {
+      '@azure/cosmos': '^4.9.0',
+      'graphql': '^16.12.0',
+    },
   },
   postBuild() {
-    // Copy important files to npm directory
     Deno.copyFileSync('LICENSE', 'npm/LICENSE')
     Deno.copyFileSync('README.md', 'npm/README.md')
     Deno.copyFileSync('CHANGELOG.md', 'npm/CHANGELOG.md')
