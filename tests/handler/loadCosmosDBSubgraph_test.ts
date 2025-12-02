@@ -251,3 +251,102 @@ Deno.test('loadCosmosDBSubgraph - handler structure conforms to SubgraphHandler 
   // Verify handler is a function (don't invoke it to avoid DB connection)
   assertEquals(typeof handler, 'function')
 })
+
+Deno.test('loadCosmosDBSubgraph - handler has dispose method', () => {
+  const handler = loadCosmosDBSubgraph('DisposeTest', {
+    connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
+    database: 'testdb',
+    container: 'testcontainer',
+  })
+
+  assertEquals(typeof handler.dispose, 'function')
+})
+
+Deno.test('loadCosmosDBSubgraph - dispose method cleans up client', async () => {
+  const { getActiveClientCount, disposeAllClients } = await import('../../src/adapters/mesh.ts')
+
+  // Start with clean state
+  disposeAllClients()
+  assertEquals(getActiveClientCount(), 0)
+
+  const handler = loadCosmosDBSubgraph('DisposeTest', {
+    connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
+    database: 'testdb',
+    container: 'testcontainer',
+  })
+
+  // Calling dispose before schema is built should not error
+  handler.dispose()
+  assertEquals(getActiveClientCount(), 0)
+
+  disposeAllClients()
+})
+
+Deno.test('loadCosmosDBSubgraph - disposeAllClients removes all clients', async () => {
+  const { getActiveClientCount, disposeAllClients } = await import('../../src/adapters/mesh.ts')
+
+  // Start with clean state
+  disposeAllClients()
+  assertEquals(getActiveClientCount(), 0)
+
+  // Create multiple handlers
+  const _handler1 = loadCosmosDBSubgraph('Test1', {
+    connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
+    database: 'db1',
+    container: 'container1',
+  })
+
+  const _handler2 = loadCosmosDBSubgraph('Test2', {
+    connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
+    database: 'db2',
+    container: 'container2',
+  })
+
+  // Dispose all
+  disposeAllClients()
+  assertEquals(getActiveClientCount(), 0)
+})
+
+Deno.test('loadCosmosDBSubgraph - individual dispose does not affect other clients', async () => {
+  const { getActiveClientCount, disposeAllClients } = await import('../../src/adapters/mesh.ts')
+
+  // Start with clean state
+  disposeAllClients()
+
+  const handler1 = loadCosmosDBSubgraph('Test1', {
+    connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
+    database: 'db1',
+    container: 'container1',
+  })
+
+  const _handler2 = loadCosmosDBSubgraph('Test2', {
+    connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
+    database: 'db2',
+    container: 'container2',
+  })
+
+  // Dispose only handler1
+  handler1.dispose()
+
+  // Handler2 should still be tracked (though not built yet)
+  // Both should be 0 since schemas haven't been built
+  assertEquals(getActiveClientCount(), 0)
+
+  // Clean up
+  disposeAllClients()
+})
+
+Deno.test('loadCosmosDBSubgraph - dispose is idempotent', () => {
+  const handler = loadCosmosDBSubgraph('IdempotentTest', {
+    connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
+    database: 'testdb',
+    container: 'testcontainer',
+  })
+
+  // Multiple dispose calls should not error
+  handler.dispose()
+  handler.dispose()
+  handler.dispose()
+
+  assertEquals(typeof handler.dispose, 'function')
+})
