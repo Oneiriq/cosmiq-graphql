@@ -30,13 +30,13 @@
 		"./apollo": "./src/adapters/apollo.ts",
 		"./yoga": "./src/adapters/yoga.ts",
 		"./hive": "./src/adapters/hive.ts",
-		"./src/adapters": "./src/adapters/mod.ts",
-		"./src/errors": "./src/errors/mod.ts",
-    "./src/handler": "./src/handler/mod.ts",
-    "./src/infer": "./src/infer/mod.ts",
-    "./src/schema": "./src/schema/mod.ts",
-		"./src/types": "./src/types/mod.ts",
-		"./src/utils": "./src/utils/mod.ts"
+		"./adapters": "./src/adapters/mod.ts",
+		"./errors": "./src/errors/mod.ts",
+    "./handler": "./src/handler/mod.ts",
+    "./infer": "./src/infer/mod.ts",
+    "./schema": "./src/schema/mod.ts",
+		"./types": "./src/types/mod.ts",
+		"./utils": "./src/utils/mod.ts"
 	},
 	"compilerOptions": {
 		"strict": true
