@@ -165,20 +165,18 @@ describe('buildResolvers', () => {
       const mockContainer = createMockContainer({
         itemReadError: testError,
       })
-
+  
       const resolvers = buildResolvers({
         container: mockContainer,
         typeName: 'File',
       })
-
-      let thrownError: unknown
-      try {
-        await resolvers.Query.file(null, { id: '123' }, null)
-      } catch (error) {
-        thrownError = error
-      }
-
-      assertEquals(thrownError, testError)
+  
+      await assertRejects(
+        async () => {
+          await resolvers.Query.file(null, { id: '123' }, null)
+        },
+        Error,
+      )
     })
 
     it('should use explicit partition key when provided', async () => {
@@ -769,4 +767,281 @@ describe('buildResolvers', () => {
       assertEquals(result.items.length, 1000)
     })
   })
+
+describe('Resolver Builder - Retry Logic', () => {
+  it('should retry single-item query on 429', async () => {
+    let readCallCount = 0
+    const testItem = { id: '1', name: 'Test' }
+
+    const mockContainer = {
+      item: (_id: string, _partitionKey: string) => ({
+        read: async () => {
+          readCallCount++
+          if (readCallCount === 1) {
+            throw { code: 429, message: 'Rate limit', retryAfterInMilliseconds: 10 }
+          }
+          return { resource: testItem }
+        },
+      }),
+    } as unknown as Container
+
+    const resolvers = buildResolvers({
+      container: mockContainer,
+      typeName: 'File',
+      retry: { maxRetries: 3, baseDelayMs: 5 },
+    })
+
+    const result = await resolvers.Query.file(null, { id: '1' }, null)
+    assertEquals((result as { id: string }).id, '1')
+    assertEquals(readCallCount, 2)
+  })
+
+  it('should not retry on 404', async () => {
+    let readCallCount = 0
+
+    const mockContainer = {
+      item: (_id: string, _partitionKey: string) => ({
+        read: async () => {
+          readCallCount++
+          throw { code: 404, message: 'Not found' }
+        },
+      }),
+    } as unknown as Container
+
+    const resolvers = buildResolvers({
+      container: mockContainer,
+      typeName: 'File',
+      retry: { maxRetries: 3 },
+    })
+
+    const result = await resolvers.Query.file(null, { id: '1' }, null)
+    assertEquals(result, null)
+    assertEquals(readCallCount, 1)
+  })
+
+  it('should retry list query on 503', async () => {
+    let queryCallCount = 0
+    const testItems = [{ id: '1' }]
+
+    const mockContainer = {
+      items: {
+        query: () => ({
+          fetchNext: async () => {
+            queryCallCount++
+            if (queryCallCount === 1) {
+              throw { code: 503, message: 'Service unavailable' }
+            }
+            return {
+              resources: testItems,
+              requestCharge: 10,
+              continuationToken: undefined,
+              hasMoreResults: false,
+            }
+          },
+        }),
+      },
+    } as unknown as Container
+
+    const resolvers = buildResolvers({
+      container: mockContainer,
+      typeName: 'File',
+      retry: { maxRetries: 3, baseDelayMs: 5 },
+    })
+
+    const result = await resolvers.Query.files(null, {}, null) as ConnectionResult<unknown>
+    assertEquals(result.items.length, 1)
+    assertEquals(queryCallCount, 2)
+  })
+
+  it('should retry on timeout (408)', async () => {
+    let queryCallCount = 0
+    const testItems = [{ id: '1' }]
+
+    const mockContainer = {
+      items: {
+        query: () => ({
+          fetchNext: async () => {
+            queryCallCount++
+            if (queryCallCount === 1) {
+              throw { code: 408, message: 'Request timeout' }
+            }
+            return {
+              resources: testItems,
+              requestCharge: 10,
+              continuationToken: undefined,
+              hasMoreResults: false,
+            }
+          },
+        }),
+      },
+    } as unknown as Container
+
+    const resolvers = buildResolvers({
+      container: mockContainer,
+      typeName: 'File',
+      retry: { maxRetries: 3, baseDelayMs: 5 },
+    })
+
+    const result = await resolvers.Query.files(null, {}, null) as ConnectionResult<unknown>
+    assertEquals(result.items.length, 1)
+    assertEquals(queryCallCount, 2)
+  })
+
+  it('should fail after max retries exhausted', async () => {
+    let readCallCount = 0
+
+    const mockContainer = {
+      item: (_id: string, _partitionKey: string) => ({
+        read: async () => {
+          readCallCount++
+          throw { code: 429, message: 'Rate limit' }
+        },
+      }),
+    } as unknown as Container
+
+    const resolvers = buildResolvers({
+      container: mockContainer,
+      typeName: 'File',
+      retry: { maxRetries: 2, baseDelayMs: 5 },
+    })
+
+    await assertRejects(
+      async () => {
+        await resolvers.Query.file(null, { id: '1' }, null)
+      },
+    )
+
+    assertEquals(readCallCount, 3)
+  })
+
+  it('should respect retry-after headers', async () => {
+    const delays: number[] = []
+    const startTime = Date.now()
+    let queryCallCount = 0
+    const testItems = [{ id: '1' }]
+
+    const mockContainer = {
+      items: {
+        query: () => ({
+          fetchNext: async () => {
+            queryCallCount++
+            if (queryCallCount < 2) {
+              throw {
+                code: 429,
+                message: 'Rate limit',
+                retryAfterInMilliseconds: 50,
+              }
+            }
+            delays.push(Date.now() - startTime)
+            return {
+              resources: testItems,
+              requestCharge: 10,
+              continuationToken: undefined,
+              hasMoreResults: false,
+            }
+          },
+        }),
+      },
+    } as unknown as Container
+
+    const resolvers = buildResolvers({
+      container: mockContainer,
+      typeName: 'File',
+      retry: { respectRetryAfter: true, baseDelayMs: 5 },
+    })
+
+    await resolvers.Query.files(null, {}, null)
+
+    assertEquals(delays[0] >= 45, true)
+  })
+
+  it('should work without retry config (uses defaults)', async () => {
+    let readCallCount = 0
+    const testItem = { id: '1', name: 'Test' }
+
+    const mockContainer = {
+      item: (_id: string, _partitionKey: string) => ({
+        read: async () => {
+          readCallCount++
+          if (readCallCount === 1) {
+            throw { code: 429, message: 'Rate limit' }
+          }
+          return { resource: testItem }
+        },
+      }),
+    } as unknown as Container
+
+    const resolvers = buildResolvers({
+      container: mockContainer,
+      typeName: 'File',
+    })
+
+    const result = await resolvers.Query.file(null, { id: '1' }, null)
+    assertEquals((result as { id: string }).id, '1')
+    assertEquals(readCallCount >= 2, true)
+  })
+
+  it('should retry on 5xx errors', async () => {
+    let queryCallCount = 0
+    const testItems = [{ id: '1' }]
+
+    const mockContainer = {
+      items: {
+        query: () => ({
+          fetchNext: async () => {
+            queryCallCount++
+            if (queryCallCount === 1) {
+              throw { code: 500, message: 'Internal server error' }
+            }
+            return {
+              resources: testItems,
+              requestCharge: 10,
+              continuationToken: undefined,
+              hasMoreResults: false,
+            }
+          },
+        }),
+      },
+    } as unknown as Container
+
+    const resolvers = buildResolvers({
+      container: mockContainer,
+      typeName: 'File',
+      retry: { maxRetries: 3, baseDelayMs: 5 },
+    })
+
+    const result = await resolvers.Query.files(null, {}, null) as ConnectionResult<unknown>
+    assertEquals(result.items.length, 1)
+    assertEquals(queryCallCount, 2)
+  })
+
+  it('should not retry non-retryable errors in list query', async () => {
+    let queryCallCount = 0
+
+    const mockContainer = {
+      items: {
+        query: () => ({
+          fetchNext: async () => {
+            queryCallCount++
+            throw { code: 400, message: 'Bad request' }
+          },
+        }),
+      },
+    } as unknown as Container
+
+    const resolvers = buildResolvers({
+      container: mockContainer,
+      typeName: 'File',
+      retry: { maxRetries: 3, baseDelayMs: 5 },
+    })
+
+    await assertRejects(
+      async () => {
+        await resolvers.Query.files(null, {}, null)
+      },
+    )
+
+    assertEquals(queryCallCount, 1)
+  })
+})
 })

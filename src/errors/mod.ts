@@ -32,6 +32,12 @@ export enum ErrorCode {
   QUERY_FAILED = 'QUERY_FAILED',
   /** Validation error for input data */
   VALIDATION_ERROR = 'VALIDATION_ERROR',
+  /** Rate limit exceeded (HTTP 429) */
+  RATE_LIMIT_EXCEEDED = 'RATE_LIMIT_EXCEEDED',
+  /** Service unavailable (HTTP 503) */
+  SERVICE_UNAVAILABLE = 'SERVICE_UNAVAILABLE',
+  /** Request timeout */
+  REQUEST_TIMEOUT = 'REQUEST_TIMEOUT',
   /** Unknown error */
   UNKNOWN_ERROR = 'UNKNOWN_ERROR',
 }
@@ -48,6 +54,22 @@ export interface CosmosDBErrorContext {
   timestamp: string
   /** Additional metadata about the error */
   metadata?: Record<string, unknown>
+}
+
+/**
+ * Metadata extracted from CosmosDB errors
+ */
+export type CosmosDBErrorMetadata = {
+  /** HTTP status code from CosmosDB response */
+  statusCode?: number
+  /** Activity ID for tracing */
+  activityId?: string
+  /** Retry-After header value in milliseconds */
+  retryAfterMs?: number
+  /** Request charge (RU consumption) */
+  requestCharge?: number
+  /** Sub-status code for additional error details */
+  substatus?: number
 }
 
 /**
@@ -279,6 +301,148 @@ export class InvalidFieldNameError extends CosmosDBError {
       severity: 'high',
       retryable: false,
     })
+  }
+}
+
+/**
+ * Error thrown when CosmosDB rate limit is exceeded (HTTP 429)
+ *
+ * This error is retryable and should respect the retry-after header
+ * from the server response.
+ *
+ * @example
+ * ```ts
+ * throw new RateLimitError({
+ *   message: 'Request rate is large',
+ *   context,
+ *   metadata: { retryAfterMs: 1000, requestCharge: 50.5 }
+ * });
+ * ```
+ */
+export class RateLimitError extends CosmosDBError {
+  public readonly metadata: CosmosDBErrorMetadata
+
+  constructor({
+    message,
+    context,
+    metadata = {},
+  }: {
+    message: string
+    context: CosmosDBErrorContext
+    metadata?: CosmosDBErrorMetadata
+  }) {
+    super({
+      message,
+      context,
+      code: ErrorCode.RATE_LIMIT_EXCEEDED,
+      severity: 'medium',
+      retryable: true,
+    })
+    this.metadata = metadata
+  }
+
+  /**
+   * Serialize error to JSON with metadata
+   */
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      metadata: this.metadata,
+    }
+  }
+}
+
+/**
+ * Error thrown when CosmosDB service is unavailable (HTTP 503)
+ *
+ * This error is retryable as the service may recover.
+ *
+ * @example
+ * ```ts
+ * throw new ServiceUnavailableError({
+ *   message: 'Service temporarily unavailable',
+ *   context,
+ *   metadata: { retryAfterMs: 5000 }
+ * });
+ * ```
+ */
+export class ServiceUnavailableError extends CosmosDBError {
+  public readonly metadata: CosmosDBErrorMetadata
+
+  constructor({
+    message,
+    context,
+    metadata = {},
+  }: {
+    message: string
+    context: CosmosDBErrorContext
+    metadata?: CosmosDBErrorMetadata
+  }) {
+    super({
+      message,
+      context,
+      code: ErrorCode.SERVICE_UNAVAILABLE,
+      severity: 'high',
+      retryable: true,
+    })
+    this.metadata = metadata
+  }
+
+  /**
+   * Serialize error to JSON with metadata
+   */
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      metadata: this.metadata,
+    }
+  }
+}
+
+/**
+ * Error thrown when a request times out
+ *
+ * This error is retryable as temporary network issues may resolve.
+ *
+ * @example
+ * ```ts
+ * throw new RequestTimeoutError({
+ *   message: 'Request timed out after 60s',
+ *   context,
+ *   metadata: { requestCharge: 10.5 }
+ * });
+ * ```
+ */
+export class RequestTimeoutError extends CosmosDBError {
+  public readonly metadata: CosmosDBErrorMetadata
+
+  constructor({
+    message,
+    context,
+    metadata = {},
+  }: {
+    message: string
+    context: CosmosDBErrorContext
+    metadata?: CosmosDBErrorMetadata
+  }) {
+    super({
+      message,
+      context,
+      code: ErrorCode.REQUEST_TIMEOUT,
+      severity: 'medium',
+      retryable: true,
+    })
+    this.metadata = metadata
+  }
+
+  /**
+   * Serialize error to JSON with metadata
+   */
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      metadata: this.metadata,
+    }
   }
 }
 

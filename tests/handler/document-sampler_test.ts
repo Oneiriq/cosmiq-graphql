@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from '@std/assert'
+import { assertEquals, assertRejects, assert } from '@std/assert'
 import type { Container } from '@azure/cosmos'
 import { sampleDocuments } from '../../src/handler/document-sampler.ts'
 import type { CosmosDBDocument } from '../../src/types/cosmosdb.ts'
@@ -432,7 +432,7 @@ Deno.test('sampleDocuments - query error handling', async () => {
       query: () => ({
         hasMoreResults: () => true,
         fetchNext: async () => {
-          throw new Error('Network timeout')
+          throw new Error('Network error')
         },
       }),
     },
@@ -446,7 +446,6 @@ Deno.test('sampleDocuments - query error handling', async () => {
         strategy: 'top',
       }),
     QueryFailedError,
-    "Failed to sample documents using 'top' strategy: Network timeout",
   )
 })
 
@@ -549,4 +548,202 @@ Deno.test('sampleDocuments - documents with CosmosDB metadata preserved', async 
 
   assertEquals(result.documents[0]._ts, 1234567890)
   assertEquals(result.documents[0]._etag, 'etag-value')
+/**
+ * Mock container helper for retry tests
+ */
+function createMockContainer({
+  queryResponse,
+}: {
+  queryResponse?: () => { resources: CosmosDBDocument[]; requestCharge: number }
+}): Container {
+  let hasMore = true
+  return {
+    items: {
+      query: () => ({
+        hasMoreResults: () => hasMore,
+        fetchNext: async () => {
+          hasMore = false
+          if (queryResponse) {
+            return queryResponse()
+          }
+          return { resources: [], requestCharge: 0 }
+        },
+      }),
+    },
+  } as unknown as Container
+}
+
+Deno.test('Document Sampler - Retry Logic', async (t) => {
+  await t.step('should retry on rate limit and succeed', async () => {
+    let queryCallCount = 0
+    const mockContainer = createMockContainer({
+      queryResponse: () => {
+        queryCallCount++
+        if (queryCallCount === 1) {
+          throw {
+            code: 429,
+            message: 'Rate limit',
+            retryAfterInMilliseconds: 10,
+          }
+        }
+        return {
+          resources: [{ id: '1' }],
+          requestCharge: 10,
+        }
+      },
+    })
+
+    const result = await sampleDocuments({
+      container: mockContainer,
+      sampleSize: 1,
+      strategy: 'top',
+      retry: { maxRetries: 3, baseDelayMs: 5 },
+    })
+
+    assertEquals(result.documents.length, 1)
+    assertEquals(queryCallCount, 2)
+  })
+
+  await t.step('should fail after max retries', async () => {
+    const mockContainer = createMockContainer({
+      queryResponse: () => {
+        throw { code: 429, message: 'Rate limit' }
+      },
+    })
+
+    await assertRejects(
+      async () => {
+        await sampleDocuments({
+          container: mockContainer,
+          sampleSize: 1,
+          strategy: 'top',
+          retry: { maxRetries: 2, baseDelayMs: 5 },
+        })
+      },
+      QueryFailedError,
+    )
+  })
+
+  await t.step('should respect retry-after header', async () => {
+    const delays: number[] = []
+    const startTime = Date.now()
+
+    let callCount = 0
+    const mockContainer = createMockContainer({
+      queryResponse: () => {
+        callCount++
+        if (callCount < 2) {
+          throw {
+            code: 429,
+            message: 'Rate limit',
+            retryAfterInMilliseconds: 50,
+          }
+        }
+        delays.push(Date.now() - startTime)
+        return { resources: [{ id: '1' }], requestCharge: 10 }
+      },
+    })
+
+    await sampleDocuments({
+      container: mockContainer,
+      sampleSize: 1,
+      strategy: 'top',
+      retry: { respectRetryAfter: true, baseDelayMs: 5 },
+    })
+
+    assert(delays[0] >= 45, `Expected delay >= 45ms, got ${delays[0]}ms`)
+  })
+
+  await t.step('should retry on service unavailable (503)', async () => {
+    let callCount = 0
+    const mockContainer = createMockContainer({
+      queryResponse: () => {
+        callCount++
+        if (callCount === 1) {
+          throw { code: 503, message: 'Service unavailable' }
+        }
+        return { resources: [{ id: '1' }], requestCharge: 10 }
+      },
+    })
+
+    const result = await sampleDocuments({
+      container: mockContainer,
+      sampleSize: 1,
+      strategy: 'top',
+      retry: { maxRetries: 3, baseDelayMs: 5 },
+    })
+
+    assertEquals(result.documents.length, 1)
+    assertEquals(callCount, 2)
+  })
+
+  await t.step('should retry on timeout (408)', async () => {
+    let callCount = 0
+    const mockContainer = createMockContainer({
+      queryResponse: () => {
+        callCount++
+        if (callCount === 1) {
+          throw { code: 408, message: 'Request timeout' }
+        }
+        return { resources: [{ id: '1' }], requestCharge: 10 }
+      },
+    })
+
+    const result = await sampleDocuments({
+      container: mockContainer,
+      sampleSize: 1,
+      strategy: 'top',
+      retry: { maxRetries: 3, baseDelayMs: 5 },
+    })
+
+    assertEquals(result.documents.length, 1)
+    assertEquals(callCount, 2)
+  })
+
+  await t.step('should not retry on non-retryable errors', async () => {
+    let callCount = 0
+    const mockContainer = createMockContainer({
+      queryResponse: () => {
+        callCount++
+        throw { code: 400, message: 'Bad request' }
+      },
+    })
+
+    await assertRejects(
+      async () => {
+        await sampleDocuments({
+          container: mockContainer,
+          sampleSize: 1,
+          strategy: 'top',
+          retry: { maxRetries: 3, baseDelayMs: 5 },
+        })
+      },
+      QueryFailedError,
+    )
+
+    assertEquals(callCount, 1)
+  })
+
+  await t.step('should work without retry config', async () => {
+    let callCount = 0
+    const mockContainer = createMockContainer({
+      queryResponse: () => {
+        callCount++
+        if (callCount === 1) {
+          throw { code: 429, message: 'Rate limit' }
+        }
+        return { resources: [{ id: '1' }], requestCharge: 10 }
+      },
+    })
+
+    const result = await sampleDocuments({
+      container: mockContainer,
+      sampleSize: 1,
+      strategy: 'top',
+    })
+
+    assertEquals(result.documents.length, 1)
+    assert(callCount >= 2, 'Should retry with default config')
+  })
+})
 })

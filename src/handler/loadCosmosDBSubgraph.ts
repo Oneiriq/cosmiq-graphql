@@ -116,6 +116,7 @@ async function buildSchema(config: CosmosDBSubgraphConfig) {
     const sampleResult = await sampleDocuments({
       container,
       sampleSize: config.sampleSize || 500,
+      retry: config.retry,
     })
 
     const typeName = config.typeName || config.container
@@ -133,6 +134,7 @@ async function buildSchema(config: CosmosDBSubgraphConfig) {
     const resolvers = buildResolvers({
       container,
       typeName,
+      retry: config.retry,
     })
 
     return createExecutableSchema({

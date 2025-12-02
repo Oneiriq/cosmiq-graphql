@@ -210,6 +210,9 @@ export type CosmosDBSubgraphConfig = {
 
   /** Type inference configuration */
   typeSystem?: Partial<TypeSystemConfig>
+
+  /** Retry configuration for rate limiting and transient errors */
+  retry?: RetryConfig
 }
 
 /**
@@ -281,3 +284,64 @@ export type QueryFilters = {
  * Order direction enum values
  */
 export type OrderDirection = 'ASC' | 'DESC'
+
+/**
+ * Retry strategy for handling rate limits and transient errors
+ */
+export type RetryStrategy = 'exponential' | 'linear' | 'fixed'
+
+/**
+ * Configuration for retry behavior on CosmosDB operations
+ */
+export type RetryConfig = {
+  /** Maximum number of retry attempts (default: 3) */
+  maxRetries?: number
+  /** Base delay in milliseconds before first retry (default: 100) */
+  baseDelayMs?: number
+  /** Maximum delay in milliseconds between retries (default: 30000) */
+  maxDelayMs?: number
+  /** Retry delay calculation strategy (default: 'exponential') */
+  strategy?: RetryStrategy
+  /** Random jitter factor to apply to delays (default: 0.1) */
+  jitterFactor?: number
+  /** Whether to respect retry-after headers from server (default: true) */
+  respectRetryAfter?: boolean
+  /** Maximum total RU budget for all retry attempts (default: Infinity) */
+  maxRetryRUBudget?: number
+  /** Whether retry is enabled (default: true) */
+  enabled?: boolean
+  /** Custom function to determine if error should be retried */
+  shouldRetry?: (error: unknown, attempt: number) => boolean
+  /** Callback invoked before each retry attempt */
+  onRetry?: (error: unknown, attempt: number, delayMs: number) => void
+}
+
+/**
+ * Default retry configuration values
+ */
+export const DEFAULT_RETRY_CONFIG: Required<Omit<RetryConfig, 'shouldRetry' | 'onRetry'>> = {
+  maxRetries: 3,
+  baseDelayMs: 100,
+  maxDelayMs: 30000,
+  strategy: 'exponential',
+  jitterFactor: 0.1,
+  respectRetryAfter: true,
+  maxRetryRUBudget: Infinity,
+  enabled: true,
+}
+
+/**
+ * Context tracking retry attempts and resource consumption
+ */
+export type RetryContext = {
+  /** Current retry attempt number (0-based) */
+  attempt: number
+  /** Total RU consumed across all attempts */
+  totalRUConsumed: number
+  /** RU consumed in current attempt */
+  currentAttemptRU: number
+  /** Timestamps of each retry attempt */
+  attemptTimestamps: number[]
+  /** Delay applied before each retry (in milliseconds) */
+  delayMs: number[]
+}

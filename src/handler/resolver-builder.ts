@@ -5,9 +5,10 @@
  */
 
 import type { Container, FeedResponse, SqlQuerySpec } from '@azure/cosmos'
-import type { ConnectionResult, QueryFilters, Resolvers } from '../types/handler.ts'
+import type { ConnectionResult, QueryFilters, Resolvers, RetryConfig } from '../types/handler.ts'
 import type { InferredSchema } from '../types/infer.ts'
 import { createErrorContext, InvalidFieldNameError } from '../errors/mod.ts'
+import { withRetry } from '../utils/retryWrapper.ts'
 
 /**
  * Options for building GraphQL resolvers
@@ -19,6 +20,8 @@ export type BuildResolversOptions = {
   typeName: string
   /** Inferred schema for nested type resolvers */
   schema?: InferredSchema
+  /** Retry configuration for rate limiting and transient errors */
+  retry?: RetryConfig
 }
 
 /**
@@ -45,6 +48,7 @@ export function buildResolvers({
   container,
   typeName,
   schema,
+  retry,
 }: BuildResolversOptions): Resolvers {
   const typeNameLower = typeName.toLowerCase()
   const typeNamePlural = `${typeNameLower}s`
@@ -54,27 +58,51 @@ export function buildResolvers({
       // Single item query: file(id: "123", partitionKey: "optional")
       [typeNameLower]: async (_source, args) => {
         const { id, partitionKey } = args as { id: string; partitionKey?: string }
-        try {
-          // Use explicit partition key if provided, otherwise use id as partition key
-          const pk = partitionKey ?? id
-          const { resource } = await container
-            .item(id, pk)
-            .read()
-          return resource
-        } catch (error) {
-          // Return null for 404 errors (item not found)
-          if (error && typeof error === 'object' && 'code' in error && error.code === 404) {
-            return null
-          }
-          // Re-throw other errors
-          throw error
-        }
+
+        return await withRetry(
+          async () => {
+            try {
+              // Use explicit partition key if provided, otherwise use id as partition key
+              const pk = partitionKey ?? id
+              const { resource } = await container
+                .item(id, pk)
+                .read()
+              return resource
+            } catch (error) {
+              // Return null for 404 errors (item not found)
+              if (error && typeof error === 'object' && 'code' in error && error.code === 404) {
+                return null
+              }
+              // Re-throw other errors
+              throw error
+            }
+          },
+          {
+            config: {
+              ...retry,
+              shouldRetry: (error, attempt) => {
+                // Don't retry 404 errors
+                if (error && typeof error === 'object' && 'code' in error && error.code === 404) {
+                  return false
+                }
+                // Use custom retry logic if provided
+                if (retry?.shouldRetry) {
+                  return retry.shouldRetry(error, attempt)
+                }
+                // Default retry logic (from isRetryableError)
+                return undefined as unknown as boolean
+              },
+            },
+            component: 'resolver-builder',
+            operation: 'single-item-query',
+          },
+        )
       },
 
       // List query with pagination, filtering, and sorting
       [typeNamePlural]: async (_source, args) => {
         const filters = args as QueryFilters
-        return await executeListQuery({ container, filters })
+        return await executeListQuery({ container, filters, retry })
       },
     },
   }
@@ -111,55 +139,66 @@ export function buildResolvers({
 async function executeListQuery({
   container,
   filters,
+  retry,
 }: {
   container: Container
   filters: QueryFilters
+  retry?: RetryConfig
 }): Promise<ConnectionResult<unknown>> {
-  const {
-    limit = 100,
-    partitionKey,
-    continuationToken,
-    orderBy,
-    orderDirection = 'ASC',
-  } = filters
+  return await withRetry(
+    async () => {
+      const {
+        limit = 100,
+        partitionKey,
+        continuationToken,
+        orderBy,
+        orderDirection = 'ASC',
+      } = filters
 
-  // Build query with filtering and sorting
-  let querySpec: string | SqlQuerySpec = 'SELECT * FROM c'
+      // Build query with filtering and sorting
+      let querySpec: string | SqlQuerySpec = 'SELECT * FROM c'
 
-  // Build parameterized query if partition key is used
-  if (partitionKey) {
-    querySpec = {
-      query: 'SELECT * FROM c WHERE c.partitionKey = @partitionKey',
-      parameters: [{ name: '@partitionKey', value: partitionKey }],
-    }
-  }
+      // Build parameterized query if partition key is used
+      if (partitionKey) {
+        querySpec = {
+          query: 'SELECT * FROM c WHERE c.partitionKey = @partitionKey',
+          parameters: [{ name: '@partitionKey', value: partitionKey }],
+        }
+      }
 
-  // Add sorting to query string
-  if (orderBy) {
-    const validatedField = validateFieldName(orderBy)
-    const baseQuery = typeof querySpec === 'string' ? querySpec : querySpec.query
-    const sortedQuery = `${baseQuery} ORDER BY c.${validatedField} ${orderDirection}`
+      // Add sorting to query string
+      if (orderBy) {
+        const validatedField = validateFieldName(orderBy)
+        const baseQuery = typeof querySpec === 'string' ? querySpec : querySpec.query
+        const sortedQuery = `${baseQuery} ORDER BY c.${validatedField} ${orderDirection}`
 
-    if (typeof querySpec === 'string') {
-      querySpec = sortedQuery
-    } else {
-      querySpec.query = sortedQuery
-    }
-  }
+        if (typeof querySpec === 'string') {
+          querySpec = sortedQuery
+        } else {
+          querySpec.query = sortedQuery
+        }
+      }
 
-  // Execute query with pagination
-  const queryIterator = container.items.query(querySpec, {
-    maxItemCount: limit,
-    continuationToken: continuationToken,
-  })
+      // Execute query with pagination
+      const queryIterator = container.items.query(querySpec, {
+        maxItemCount: limit,
+        continuationToken: continuationToken,
+      })
 
-  const response: FeedResponse<unknown> = await queryIterator.fetchNext()
+      const response: FeedResponse<unknown> = await queryIterator.fetchNext()
 
-  return {
-    items: response.resources,
-    continuationToken: response.continuationToken,
-    hasMore: !!response.continuationToken,
-  }
+      return {
+        items: response.resources,
+        continuationToken: response.continuationToken,
+        hasMore: !!response.continuationToken,
+      }
+    },
+    {
+      config: retry,
+      component: 'resolver-builder',
+      operation: 'list-query',
+    },
+  )
 }
 
 /**
