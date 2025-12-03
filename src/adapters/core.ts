@@ -320,7 +320,7 @@ function createCosmosClient(config: CosmosDBSubgraphConfig): CosmosClient {
 
     if (isLocalEmulator) {
       const customAgent = new HttpsAgent({ rejectUnauthorized: false })
-      
+
       // @ts-ignore - connectionPolicy and agent properties not in types but accepted by runtime
       return new CosmosClient({
         endpoint: connection.endpoint,
