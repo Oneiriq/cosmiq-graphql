@@ -270,6 +270,7 @@ export type CosmosDBSubgraphConfig = {
 export type SubgraphHandler = () => {
   name: string
   schema$: Promise<GraphQLSchema>
+  transport: 'local'
 }
 
 /**

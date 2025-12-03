@@ -144,6 +144,7 @@ export function loadCosmosDBSubgraph(
   const handler = () => ({
     name: subgraphName,
     schema$: buildMeshSchema(config, onProgress, clientKey),
+    transport: 'local' as const,
   })
 
   // Add disposal method to handler
