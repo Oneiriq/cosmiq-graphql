@@ -265,12 +265,15 @@ export type CosmosDBSubgraphConfig = {
 }
 
 /**
- * Mesh-compatible subgraph handler function
+ * Mesh-compatible subgraph handler object
+ *
+ * For GraphQL Mesh v1 compose-cli integration.
+ * The handler returns an object with name and schema$ properties.
+ * No transport field is needed - Mesh v1 handles this internally.
  */
-export type SubgraphHandler = () => {
+export type SubgraphHandler = {
   name: string
   schema$: Promise<GraphQLSchema>
-  transport: 'local'
 }
 
 /**

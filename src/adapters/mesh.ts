@@ -6,7 +6,7 @@
 
 import type { CosmosClient } from '@azure/cosmos'
 import type { GraphQLSchema } from 'graphql'
-import type { CosmosDBSubgraphConfig, ProgressCallback, SubgraphHandler } from '../types/handler.ts'
+import type { CosmosDBSubgraphConfig, ProgressCallback } from '../types/handler.ts'
 import { buildCoreSchema } from './core.ts'
 import { ConfigurationError, createErrorContext } from '../errors/mod.ts'
 import { validateContainerConfig, validateRequiredString } from '../utils/validation.ts'
@@ -19,7 +19,15 @@ const activeClients = new Map<string, CosmosClient>()
 /**
  * Extended SubgraphHandler with disposal capability
  */
-export type MeshSubgraphHandler = SubgraphHandler & {
+export type MeshSubgraphHandler = {
+  /**
+   * Name of the subgraph
+   */
+  name: string
+  /**
+   * Promise that resolves to the executable GraphQL schema
+   */
+  schema$: Promise<GraphQLSchema>
   /**
    * Dispose the CosmosDB client and clean up resources
    * Call this when shutting down the Mesh server
@@ -141,23 +149,19 @@ export function loadCosmosDBSubgraph(
   // Create unique key for this client instance (one client per database)
   const clientKey = `${subgraphName}:${config.database}`
 
-  const handler = () => ({
+  const handler: MeshSubgraphHandler = {
     name: subgraphName,
     schema$: buildMeshSchema(config, onProgress, clientKey),
-    transport: 'local' as const,
-  })
-
-  // Add disposal method to handler
-  const handlerWithDispose = handler as MeshSubgraphHandler
-  handlerWithDispose.dispose = () => {
-    const client = activeClients.get(clientKey)
-    if (client) {
-      client.dispose()
-      activeClients.delete(clientKey)
-    }
+    dispose: () => {
+      const client = activeClients.get(clientKey)
+      if (client) {
+        client.dispose()
+        activeClients.delete(clientKey)
+      }
+    },
   }
 
-  return handlerWithDispose
+  return handler
 }
 
 /**
