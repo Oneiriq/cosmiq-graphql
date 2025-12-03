@@ -12,7 +12,7 @@ await build({
   },
   package: {
     name: '@albedosehen/cosmosdb-schemagen',
-    version: Deno.args[0] || '0.2.0',
+    version: Deno.args[0] || '0.3.0',
     description: 'A data-first schema SDL generator and validator for Azure Cosmos DB and GraphQL.',
     license: 'MIT',
     author: {
