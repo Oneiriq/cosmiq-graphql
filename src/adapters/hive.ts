@@ -80,14 +80,14 @@ export type HiveAdapterResult = {
  * @param config - CosmosDB and Hive configuration
  * @returns Upload result with registry details or errors
  *
- * @example Basic usage
+ * @example Single container
  * ```ts
  * import { uploadToHive } from '@albedosehen/cosmosdb-schemagen/hive'
  *
  * const result = await uploadToHive({
  *   connectionString: Deno.env.get('COSMOS_CONN')!,
  *   database: 'myDatabase',
- *   container: 'items',
+ *   containers: [{ name: 'items', typeName: 'Item' }],
  *   registryUrl: 'https://app.graphql-hive.com',
  *   serviceName: 'cosmos-api',
  *   token: Deno.env.get('HIVE_TOKEN')!,
@@ -100,12 +100,28 @@ export type HiveAdapterResult = {
  * }
  * ```
  *
+ * @example Multiple containers (unified schema)
+ * ```ts
+ * const result = await uploadToHive({
+ *   connectionString: Deno.env.get('COSMOS_CONN')!,
+ *   database: 'db1',
+ *   containers: [
+ *     { name: 'users', typeName: 'User' },
+ *     { name: 'listings', typeName: 'Listing' },
+ *     { name: 'files', typeName: 'File' }
+ *   ],
+ *   registryUrl: 'https://app.graphql-hive.com',
+ *   serviceName: 'cosmos-api',
+ *   token: Deno.env.get('HIVE_TOKEN')!,
+ * })
+ * ```
+ *
  * @example With validation and commit info
  * ```ts
  * const result = await uploadToHive({
  *   connectionString: Deno.env.get('COSMOS_CONN')!,
  *   database: 'myDatabase',
- *   container: 'items',
+ *   containers: [{ name: 'items', typeName: 'Item' }],
  *   registryUrl: 'https://app.graphql-hive.com',
  *   serviceName: 'cosmos-api',
  *   token: Deno.env.get('HIVE_TOKEN')!,
@@ -133,7 +149,6 @@ export async function uploadToHive(
             hasServiceName: !!config.serviceName,
             hasToken: !!config.token,
             database: config.database,
-            container: config.container,
           },
         },
       }),
@@ -151,7 +166,6 @@ export async function uploadToHive(
             hasServiceName: !!config.serviceName,
             hasToken: !!config.token,
             database: config.database,
-            container: config.container,
           },
         },
       }),
@@ -169,7 +183,6 @@ export async function uploadToHive(
             serviceName: config.serviceName,
             hasToken: !!config.token,
             database: config.database,
-            container: config.container,
           },
         },
       }),

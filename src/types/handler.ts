@@ -196,7 +196,50 @@ export type ConfigValidationResult = {
 }
 
 /**
+ * Configuration for a single container
+ *
+ * Each container can have its own type name, sample size, and type system config.
+ *
+ * @example
+ * ```ts
+ * const containerConfig: ContainerConfig = {
+ *   name: 'users',
+ *   typeName: 'User',
+ *   sampleSize: 1000
+ * }
+ * ```
+ */
+export type ContainerConfig = {
+  /** Container name (required) */
+  name: string
+
+  /** Custom GraphQL type name (optional, default: auto-prefixed with container name) */
+  typeName?: string
+
+  /** Number of documents to sample for this container (optional, default: 500) */
+  sampleSize?: number
+
+  /** Type inference configuration for this container (optional, overrides global config) */
+  typeSystem?: Partial<TypeSystemConfig>
+}
+
+/**
  * Configuration for CosmosDB subgraph handler
+ *
+ * Containers-only API - always use the containers array, even for a single container.
+ *
+ * @example
+ * ```ts
+ * // Single container
+ * { database: 'db1', containers: [{ name: 'users', typeName: 'User' }] }
+ *
+ * // Multiple containers
+ * { database: 'db1', containers: [
+ *     { name: 'users', typeName: 'User' },
+ *     { name: 'listings', typeName: 'Listing' }
+ *   ]
+ * }
+ * ```
  */
 export type CosmosDBSubgraphConfig = {
   /** CosmosDB connection string (authentication option 1) */
@@ -208,17 +251,11 @@ export type CosmosDBSubgraphConfig = {
   /** Azure credential for managed identity authentication (authentication option 2) */
   credential?: unknown
 
-  /** Database name */
+  /** Database name (required) */
   database: string
 
-  /** Container name */
-  container: string
-
-  /** Number of documents to sample for schema inference (default: 500) */
-  sampleSize?: number
-
-  /** GraphQL root type name (default: container name) */
-  typeName?: string
+  /** Containers to process (required, must have at least one) */
+  containers: ContainerConfig[]
 
   /** Type inference configuration */
   typeSystem?: Partial<TypeSystemConfig>

@@ -14,7 +14,7 @@ Deno.test('loadCosmosDBSubgraph - validates name is required', () => {
       loadCosmosDBSubgraph('', {
         connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
         database: 'testdb',
-        container: 'testcontainer',
+        containers: [{ name: 'testcontainer' }],
       })
     },
     ValidationError,
@@ -28,7 +28,7 @@ Deno.test('loadCosmosDBSubgraph - validates name is a string', () => {
       loadCosmosDBSubgraph(123 as unknown as string, {
         connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
         database: 'testdb',
-        container: 'testcontainer',
+        containers: [{ name: 'testcontainer' }],
       })
     },
     ValidationError,
@@ -41,7 +41,7 @@ Deno.test('loadCosmosDBSubgraph - validates connectionString or endpoint is requ
     () => {
       loadCosmosDBSubgraph('TestSubgraph', {
         database: 'testdb',
-        container: 'testcontainer',
+        containers: [{ name: 'testcontainer' }],
       } as CosmosDBSubgraphConfig)
     },
     ConfigurationError,
@@ -54,7 +54,7 @@ Deno.test('loadCosmosDBSubgraph - validates database is required', () => {
     () => {
       loadCosmosDBSubgraph('TestSubgraph', {
         connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
-        container: 'testcontainer',
+        containers: [{ name: 'testcontainer' }],
       } as CosmosDBSubgraphConfig)
     },
     ValidationError,
@@ -62,7 +62,7 @@ Deno.test('loadCosmosDBSubgraph - validates database is required', () => {
   )
 })
 
-Deno.test('loadCosmosDBSubgraph - validates container is required', () => {
+Deno.test('loadCosmosDBSubgraph - validates containers is required', () => {
   assertThrows(
     () => {
       loadCosmosDBSubgraph('TestSubgraph', {
@@ -71,7 +71,7 @@ Deno.test('loadCosmosDBSubgraph - validates container is required', () => {
       } as CosmosDBSubgraphConfig)
     },
     ValidationError,
-    'container is required and cannot be empty',
+    'Must specify at least one container',
   )
 })
 
@@ -79,7 +79,7 @@ Deno.test('loadCosmosDBSubgraph - returns valid SubgraphHandler with minimal con
   const handler = loadCosmosDBSubgraph('TestSubgraph', {
     connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=testkey123;',
     database: 'testdb',
-    container: 'testcontainer',
+    containers: [{ name: 'testcontainer' }],
   })
 
   // Verify handler is a function (don't invoke it to avoid DB connection)
@@ -90,8 +90,7 @@ Deno.test('loadCosmosDBSubgraph - returns handler with custom typeName', () => {
   const handler = loadCosmosDBSubgraph('TestSubgraph', {
     connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=testkey123;',
     database: 'testdb',
-    container: 'testcontainer',
-    typeName: 'CustomType',
+    containers: [{ name: 'testcontainer', typeName: 'CustomType' }],
   })
 
   // Verify handler is a function (don't invoke it to avoid DB connection)
@@ -102,8 +101,7 @@ Deno.test('loadCosmosDBSubgraph - returns handler with custom sampleSize', () =>
   const handler = loadCosmosDBSubgraph('TestSubgraph', {
     connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=testkey123;',
     database: 'testdb',
-    container: 'testcontainer',
-    sampleSize: 100,
+    containers: [{ name: 'testcontainer', sampleSize: 100 }],
   })
 
   // Verify handler is a function (don't invoke it to avoid DB connection)
@@ -114,7 +112,7 @@ Deno.test('loadCosmosDBSubgraph - returns handler with typeSystem config', () =>
   const handler = loadCosmosDBSubgraph('TestSubgraph', {
     connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=testkey123;',
     database: 'testdb',
-    container: 'testcontainer',
+    containers: [{ name: 'testcontainer' }],
     typeSystem: {
       requiredThreshold: 0.90,
       conflictResolution: 'widen',
@@ -129,7 +127,7 @@ Deno.test('loadCosmosDBSubgraph - handler returns object with name and schema$',
   const handler = loadCosmosDBSubgraph('MyCosmosDB', {
     connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=testkey;',
     database: 'mydb',
-    container: 'mycollection',
+    containers: [{ name: 'mycollection' }],
   })
 
   // Verify handler is a function (don't invoke it to avoid DB connection)
@@ -140,9 +138,16 @@ Deno.test('loadCosmosDBSubgraph - supports all optional parameters', () => {
   const handler = loadCosmosDBSubgraph('FullConfigSubgraph', {
     connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=testkey;',
     database: 'mydb',
-    container: 'mycollection',
-    sampleSize: 1000,
-    typeName: 'MyCustomType',
+    containers: [
+      {
+        name: 'mycollection',
+        sampleSize: 1000,
+        typeName: 'MyCustomType',
+        typeSystem: {
+          requiredThreshold: 0.95,
+        },
+      },
+    ],
     typeSystem: {
       sampleSize: 1000,
       requiredThreshold: 0.90,
@@ -163,7 +168,7 @@ Deno.test('loadCosmosDBSubgraph - handles empty string name', () => {
       loadCosmosDBSubgraph('', {
         connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
         database: 'testdb',
-        container: 'testcontainer',
+        containers: [{ name: 'testcontainer' }],
       })
     },
     ValidationError,
@@ -177,7 +182,7 @@ Deno.test('loadCosmosDBSubgraph - handles null name', () => {
       loadCosmosDBSubgraph(null as unknown as string, {
         connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
         database: 'testdb',
-        container: 'testcontainer',
+        containers: [{ name: 'testcontainer' }],
       })
     },
     ValidationError,
@@ -191,7 +196,7 @@ Deno.test('loadCosmosDBSubgraph - handles undefined name', () => {
       loadCosmosDBSubgraph(undefined as unknown as string, {
         connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
         database: 'testdb',
-        container: 'testcontainer',
+        containers: [{ name: 'testcontainer' }],
       })
     },
     ValidationError,
@@ -205,7 +210,7 @@ Deno.test('loadCosmosDBSubgraph - handles empty database', () => {
       loadCosmosDBSubgraph('TestSubgraph', {
         connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
         database: '',
-        container: 'testcontainer',
+        containers: [{ name: 'testcontainer' }],
       })
     },
     ValidationError,
@@ -213,17 +218,17 @@ Deno.test('loadCosmosDBSubgraph - handles empty database', () => {
   )
 })
 
-Deno.test('loadCosmosDBSubgraph - handles empty container', () => {
+Deno.test('loadCosmosDBSubgraph - handles empty container name', () => {
   assertThrows(
     () => {
       loadCosmosDBSubgraph('TestSubgraph', {
         connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
         database: 'testdb',
-        container: '',
+        containers: [{ name: '' }],
       })
     },
     ValidationError,
-    'container is required and cannot be empty',
+    'container name is required and cannot be empty',
   )
 })
 
@@ -233,7 +238,7 @@ Deno.test('loadCosmosDBSubgraph - validates empty connectionString', () => {
       loadCosmosDBSubgraph('TestSubgraph', {
         connectionString: '',
         database: 'testdb',
-        container: 'testcontainer',
+        containers: [{ name: 'testcontainer' }],
       })
     },
     ConfigurationError,
@@ -245,7 +250,7 @@ Deno.test('loadCosmosDBSubgraph - handler structure conforms to SubgraphHandler 
   const handler = loadCosmosDBSubgraph('TypeTest', {
     connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
     database: 'testdb',
-    container: 'testcontainer',
+    containers: [{ name: 'testcontainer' }],
   })
 
   // Verify handler is a function (don't invoke it to avoid DB connection)
@@ -256,7 +261,7 @@ Deno.test('loadCosmosDBSubgraph - handler has dispose method', () => {
   const handler = loadCosmosDBSubgraph('DisposeTest', {
     connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
     database: 'testdb',
-    container: 'testcontainer',
+    containers: [{ name: 'testcontainer' }],
   })
 
   assertEquals(typeof handler.dispose, 'function')
@@ -272,7 +277,7 @@ Deno.test('loadCosmosDBSubgraph - dispose method cleans up client', async () => 
   const handler = loadCosmosDBSubgraph('DisposeTest', {
     connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
     database: 'testdb',
-    container: 'testcontainer',
+    containers: [{ name: 'testcontainer' }],
   })
 
   // Calling dispose before schema is built should not error
@@ -293,13 +298,13 @@ Deno.test('loadCosmosDBSubgraph - disposeAllClients removes all clients', async 
   const _handler1 = loadCosmosDBSubgraph('Test1', {
     connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
     database: 'db1',
-    container: 'container1',
+    containers: [{ name: 'container1' }],
   })
 
   const _handler2 = loadCosmosDBSubgraph('Test2', {
     connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
     database: 'db2',
-    container: 'container2',
+    containers: [{ name: 'container2' }],
   })
 
   // Dispose all
@@ -316,19 +321,18 @@ Deno.test('loadCosmosDBSubgraph - individual dispose does not affect other clien
   const handler1 = loadCosmosDBSubgraph('Test1', {
     connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
     database: 'db1',
-    container: 'container1',
+    containers: [{ name: 'container1' }],
   })
 
   const _handler2 = loadCosmosDBSubgraph('Test2', {
     connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
     database: 'db2',
-    container: 'container2',
+    containers: [{ name: 'container2' }],
   })
 
   // Dispose only handler1
   handler1.dispose()
 
-  // Handler2 should still be tracked (though not built yet)
   // Both should be 0 since schemas haven't been built
   assertEquals(getActiveClientCount(), 0)
 
@@ -340,7 +344,7 @@ Deno.test('loadCosmosDBSubgraph - dispose is idempotent', () => {
   const handler = loadCosmosDBSubgraph('IdempotentTest', {
     connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
     database: 'testdb',
-    container: 'testcontainer',
+    containers: [{ name: 'testcontainer' }],
   })
 
   // Multiple dispose calls should not error

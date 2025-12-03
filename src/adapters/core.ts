@@ -6,7 +6,7 @@
 
 import { type Container, CosmosClient } from '@azure/cosmos'
 import type { GraphQLSchema } from 'graphql'
-import type { CosmosDBSubgraphConfig, ProgressCallback } from '../types/handler.ts'
+import type { CosmosDBSubgraphConfig, ProgressCallback, Resolvers } from '../types/handler.ts'
 import type { InferredSchema } from '../types/infer.ts'
 import { parseConnectionString } from '../handler/connection-parser.ts'
 import { sampleDocuments } from '../handler/document-sampler.ts'
@@ -15,8 +15,20 @@ import { buildGraphQLSDL } from '../infer/sdl-generator.ts'
 import { buildResolvers } from '../handler/resolver-builder.ts'
 import { createExecutableSchema } from '../handler/schema-executor.ts'
 import { ConfigurationError, createErrorContext } from '../errors/mod.ts'
-import { validateRequiredString } from '../utils/validation.ts'
+import { validateContainerConfig, validateRequiredString } from '../utils/validation.ts'
 import { SchemaCache } from '../cache/schemaCache.ts'
+
+/**
+ * Container information
+ */
+type ContainerInfo = {
+  /** CosmosDB container instance */
+  container: Container
+  /** GraphQL type name for this container */
+  typeName: string
+  /** Inferred schema for this container */
+  schema: InferredSchema
+}
 
 /**
  * Result of core schema building
@@ -32,14 +44,11 @@ export type CoreSchemaResult = {
   /** CosmosDB client instance (adapter must dispose when done) */
   client: CosmosClient
 
-  /** CosmosDB container instance (used by resolvers) */
-  container: Container
+  /** Map of container instances by type name */
+  containers: Map<string, Container>
 
-  /** GraphQL type name */
-  typeName: string
-
-  /** Inferred schema metadata */
-  inferredSchema: InferredSchema
+  /** Array of all container names */
+  containerNames: string[]
 
   /** Statistics about schema generation */
   stats: {
@@ -47,69 +56,266 @@ export type CoreSchemaResult = {
     documentsAnalyzed: number
     /** Number of GraphQL types generated */
     typesGenerated: number
-    /** Sample size used */
+    /** Total sample size across all containers */
     sampleSize: number
   }
 }
 
 /**
- * Build core schema artifacts from CosmosDB
+ * Capitalize the first letter of a string
  *
- * This function is used internally by all framework adapters to generate
- * GraphQL schemas from CosmosDB containers. It performs sampling, inference,
- * SDL generation, and resolver building.
- *
- * **CRITICAL**: This function does NOT dispose the CosmosDB client. The client
- * must remain alive for resolvers to function. Adapters are responsible for
- * client disposal at the appropriate time (e.g., server shutdown).
- *
- * @param config - CosmosDB configuration
- * @param onProgress - Optional progress callback for status updates
- * @param cache - Optional schema cache instance for performance optimization
- * @returns Promise resolving to core schema artifacts
+ * @param str - String to capitalize
+ * @returns String with first letter capitalized
  *
  * @example
  * ```ts
- * // Without cache
- * const core = await buildCoreSchema(config, (event) => {
- *   console.log(`${event.stage}: ${event.message}`)
- * })
- *
- * // With cache
- * const cache = new SchemaCache({ enabled: true, ttlMs: 3600000 })
- * const core = await buildCoreSchema(config, undefined, cache)
- *
- * // Use the schema in your framework
- * const server = new ApolloServer({ schema: core.schema })
- *
- * // Dispose client on shutdown
- * process.on('SIGTERM', () => {
- *   core.client.dispose()
- * })
+ * capitalizeFirstLetter('users') // 'Users'
+ * capitalizeFirstLetter('listing') // 'Listing'
  * ```
  */
-export async function buildCoreSchema(
-  config: CosmosDBSubgraphConfig,
-  onProgress?: ProgressCallback,
-  cache?: SchemaCache,
-): Promise<CoreSchemaResult> {
-  // Validate configuration
-  const database = validateRequiredString(config.database, 'database', 'buildCoreSchema')
-  const container = validateRequiredString(config.container, 'container', 'buildCoreSchema')
+function capitalizeFirstLetter(str: string): string {
+  if (!str || str.length === 0) return str
+  return str.charAt(0).toUpperCase() + str.slice(1)
+}
 
-  // Create CosmosDB client based on authentication method
-  let client: CosmosClient
+/**
+ * Convert plural word to singular form
+ *
+ * Simple singularization for common patterns.
+ * For edge cases, users should provide custom typeName.
+ *
+ * @param word - Plural word to singularize
+ * @returns Singular form of the word
+ *
+ * @example
+ * ```ts
+ * singularize('users') // 'user'
+ * singularize('listings') // 'listing'
+ * singularize('files') // 'file'
+ * singularize('data') // 'data' (irregular, unchanged)
+ * ```
+ */
+function singularize(word: string): string {
+  if (!word || word.length === 0) return word
 
+  // Handle common irregular plurals
+  const irregulars: Record<string, string> = {
+    'people': 'person',
+    'children': 'child',
+    'men': 'man',
+    'women': 'woman',
+    'data': 'data',
+    'sheep': 'sheep',
+    'fish': 'fish',
+  }
+
+  const lowerWord = word.toLowerCase()
+  if (irregulars[lowerWord]) {
+    return irregulars[lowerWord]
+  }
+
+  // Handle common plural patterns
+  if (word.endsWith('ies')) {
+    return word.slice(0, -3) + 'y'
+  }
+  if (word.endsWith('ses') || word.endsWith('xes') || word.endsWith('zes')) {
+    return word.slice(0, -2)
+  }
+  if (word.endsWith('s') && !word.endsWith('ss')) {
+    return word.slice(0, -1)
+  }
+
+  return word
+}
+
+/**
+ * Resolve GraphQL type name for a container
+ *
+ * Implements the type naming strategy:
+ * - Custom typeName takes precedence
+ * - Auto-prefix: {ContainerName}{SingularContainerName}
+ *
+ * @param params - Type name resolution parameters
+ * @returns Resolved GraphQL type name
+ *
+ * @example
+ * ```ts
+ * // Custom type name
+ * resolveTypeName({ containerName: 'users', customTypeName: 'User' })
+ * // Returns: 'User'
+ *
+ * // Auto-prefix
+ * resolveTypeName({ containerName: 'users' })
+ * // Returns: 'UsersUser'
+ * ```
+ */
+function resolveTypeName({
+  containerName,
+  customTypeName,
+}: {
+  containerName: string
+  customTypeName?: string
+}): string {
+  if (customTypeName) {
+    return customTypeName
+  }
+
+  // Auto-prefix: capitalize container name + capitalize singular
+  const capitalized = capitalizeFirstLetter(containerName)
+  const singular = singularize(capitalized)
+  return `${capitalized}${capitalizeFirstLetter(singular)}`
+}
+
+/**
+ * Build unified SDL from multiple container schemas
+ *
+ * Merges SDL fragments from multiple containers into a single unified schema.
+ * Each container's types are included, and all queries are combined into a single Query type.
+ *
+ * @param params - SDL merging parameters
+ * @returns Unified GraphQL SDL string
+ */
+function buildMultiContainerSDL({
+  containerInfos,
+}: {
+  containerInfos: ContainerInfo[]
+}): string {
+  const sdlFragments: string[] = []
+  const queryFields: string[] = []
+  const connectionTypes: string[] = []
+
+  for (const info of containerInfos) {
+    // Generate SDL without Query type (we'll merge queries separately)
+    const sdl = buildGraphQLSDL({
+      schema: info.schema,
+      includeQueries: false,
+    })
+    sdlFragments.push(sdl)
+
+    // Build query fields for this container
+    const typeName = info.typeName
+    const typeNameLower = typeName.toLowerCase()
+    const typeNamePlural = `${typeNameLower}s`
+    const connectionName = `${typeName}${capitalizeFirstLetter(typeNamePlural)}Connection`
+
+    queryFields.push(`  """Get a single ${typeName} by ID"""
+  ${typeNameLower}(
+    """Document ID"""
+    id: ID!
+    
+    """Partition key (optional, defaults to ID if not provided)"""
+    partitionKey: String
+  ): ${typeName}
+
+  """List ${typeName}s with pagination, filtering, and sorting"""
+  ${typeNamePlural}(
+    """Maximum number of results (default: 100)"""
+    limit: Int = 100
+    
+    """Filter by partition key"""
+    partitionKey: String
+    
+    """Continuation token from previous query for pagination"""
+    continuationToken: String
+    
+    """Field name to sort by"""
+    orderBy: String
+    
+    """Sort direction (default: ASC)"""
+    orderDirection: OrderDirection = ASC
+  ): ${connectionName}!`)
+
+    // Build connection type for this container
+    connectionTypes.push(`"""Paginated connection for ${typeName} queries"""
+type ${connectionName} {
+  """Items in the current page"""
+  items: [${typeName}!]!
+  
+  """Continuation token for fetching the next page"""
+  continuationToken: String
+  
+  """Whether more items are available"""
+  hasMore: Boolean!
+}`)
+  }
+
+  // Merge all SDL fragments
+  const mergedTypes = sdlFragments.join('\n\n')
+
+  // Create unified Query type
+  const queryType = `type Query {
+${queryFields.join('\n\n')}
+}`
+
+  // OrderDirection enum
+  const orderDirectionEnum = `"""Sort direction for query results"""
+enum OrderDirection {
+  """Ascending order"""
+  ASC
+  
+  """Descending order"""
+  DESC
+}`
+
+  // Combine all parts
+  return `${mergedTypes}\n\n${queryType}\n\n${orderDirectionEnum}\n\n${connectionTypes.join('\n\n')}`
+}
+
+/**
+ * Build multi-container resolvers
+ *
+ * Creates resolvers for all containers, routing queries to the appropriate container.
+ *
+ * @param params - Resolver building parameters
+ * @returns GraphQL resolvers object
+ */
+function buildMultiContainerResolvers({
+  containerMap,
+  retry,
+}: {
+  containerMap: Map<string, Container>
+  retry?: CosmosDBSubgraphConfig['retry']
+}): Resolvers {
+  const resolvers: Resolvers = {
+    Query: {},
+  }
+
+  for (const [typeName, container] of containerMap.entries()) {
+    // Build resolvers for this container
+    const containerResolvers = buildResolvers({
+      container,
+      typeName,
+      retry,
+    })
+
+    // Merge Query resolvers
+    resolvers.Query = { ...resolvers.Query, ...containerResolvers.Query }
+
+    // Add type-specific resolvers if any
+    if (containerResolvers[typeName]) {
+      resolvers[typeName] = containerResolvers[typeName]
+    }
+  }
+
+  return resolvers
+}
+
+/**
+ * Create CosmosDB client from configuration
+ *
+ * @param config - CosmosDB configuration
+ * @returns CosmosDB client instance
+ * @throws {ConfigurationError} If authentication configuration is invalid
+ */
+function createCosmosClient(config: CosmosDBSubgraphConfig): CosmosClient {
   if (config.connectionString) {
-    // Use connection string authentication
     const connection = parseConnectionString(config.connectionString)
-    client = new CosmosClient({
+    return new CosmosClient({
       endpoint: connection.endpoint,
       key: connection.key,
     })
   } else if (config.endpoint && config.credential) {
-    // Use managed identity authentication
-    client = new CosmosClient({
+    return new CosmosClient({
       endpoint: config.endpoint,
       aadCredentials: config.credential as {
         getToken: (
@@ -121,14 +327,10 @@ export async function buildCoreSchema(
     throw new ConfigurationError(
       'When using endpoint authentication, credential must be provided',
       createErrorContext({
-        component: 'buildCoreSchema',
+        component: 'createCosmosClient',
         metadata: {
-          providedConfig: {
-            endpoint: '[redacted]',
-            hasCredential: false,
-            database,
-            container,
-          },
+          hasEndpoint: true,
+          hasCredential: false,
         },
       }),
     )
@@ -136,125 +338,173 @@ export async function buildCoreSchema(
     throw new ConfigurationError(
       'Either connectionString or endpoint+credential must be provided',
       createErrorContext({
-        component: 'buildCoreSchema',
+        component: 'createCosmosClient',
         metadata: {
-          providedConfig: {
-            hasConnectionString: false,
-            hasEndpoint: false,
-            hasCredential: false,
-            database,
-            container,
-          },
+          hasConnectionString: false,
+          hasEndpoint: false,
+          hasCredential: false,
         },
       }),
     )
   }
+}
 
-  // Get container reference
-  const containerRef = client.database(database).container(container)
+/**
+ * Build core schema from CosmosDB containers
+ *
+ * Generates a unified GraphQL schema from CosmosDB containers.
+ * All containers share a single CosmosClient instance for efficiency.
+ *
+ * **CRITICAL**: This function does NOT dispose the CosmosDB client. The client
+ * must remain alive for resolvers to function. Adapters are responsible for
+ * client disposal at the appropriate time (e.g., server shutdown).
+ *
+ * @param config - CosmosDB configuration with containers array
+ * @param onProgress - Optional progress callback for status updates
+ * @param cache - Optional schema cache instance for performance optimization
+ * @returns Promise resolving to core schema artifacts
+ *
+ * @example
+ * ```ts
+ * // Single container
+ * const result = await buildCoreSchema({
+ *   connectionString: env.COSMOS_CONN,
+ *   database: 'db1',
+ *   containers: [{ name: 'users', typeName: 'User' }]
+ * })
+ *
+ * // Multiple containers
+ * const result = await buildCoreSchema({
+ *   connectionString: env.COSMOS_CONN,
+ *   database: 'db1',
+ *   containers: [
+ *     { name: 'users', typeName: 'User' },
+ *     { name: 'listings', typeName: 'Listing' }
+ *   ]
+ * })
+ * ```
+ */
+export async function buildCoreSchema(
+  config: CosmosDBSubgraphConfig,
+  onProgress?: ProgressCallback,
+  _cache?: SchemaCache,
+): Promise<CoreSchemaResult> {
+  // Validate configuration
+  validateContainerConfig({ config, component: 'buildCoreSchema' })
 
-  // Report sampling started
+  const database = validateRequiredString(config.database, 'database', 'buildCoreSchema')
+
+  // Create single CosmosDB client for all containers
+  const client = createCosmosClient(config)
+
+  // Sample documents from all containers in parallel
   onProgress?.({
     stage: 'sampling_started',
-    message: `Starting document sampling (size: ${config.sampleSize || 500})`,
-    metadata: { sampleSize: config.sampleSize || 500 },
+    message: `Starting parallel document sampling for ${config.containers.length} containers`,
+    metadata: { containerCount: config.containers.length },
   })
 
-  // Sample documents with progress reporting
-  const sampleResult = await sampleDocuments({
-    container: containerRef,
-    sampleSize: config.sampleSize || 500,
-    retry: config.retry,
-    onProgress: (sampled, total, ruConsumed) => {
-      // Convert document sampler progress to ProgressEvent
-      const progress = total > 0 ? Math.round((sampled / total) * 100) : 0
-      onProgress?.({
-        stage: 'sampling_progress',
-        progress,
-        message: `Sampled ${sampled}/${total} documents (${ruConsumed.toFixed(2)} RU)`,
-        metadata: { sampled, total, ruConsumed },
+  const containerInfos: ContainerInfo[] = await Promise.all(
+    config.containers.map(async (containerConfig) => {
+      const containerRef = client.database(database).container(containerConfig.name)
+      const sampleSize = containerConfig.sampleSize || 500
+
+      // Sample documents
+      const sampleResult = await sampleDocuments({
+        container: containerRef,
+        sampleSize,
+        retry: config.retry,
+        onProgress: (sampled, total, ruConsumed) => {
+          onProgress?.({
+            stage: 'sampling_progress',
+            progress: total > 0 ? Math.round((sampled / total) * 100) : 0,
+            message: `[${containerConfig.name}] Sampled ${sampled}/${total} documents (${ruConsumed.toFixed(2)} RU)`,
+            metadata: { container: containerConfig.name, sampled, total, ruConsumed },
+          })
+        },
       })
-    },
-  })
+
+      // Resolve type name
+      const typeName = resolveTypeName({
+        containerName: containerConfig.name,
+        customTypeName: containerConfig.typeName,
+      })
+
+      // Infer schema
+      onProgress?.({
+        stage: 'inference_started',
+        message: `[${containerConfig.name}] Starting schema inference for type ${typeName}`,
+        metadata: { container: containerConfig.name, typeName },
+      })
+
+      const inferredSchema = inferSchema({
+        documents: sampleResult.documents,
+        typeName,
+        config: containerConfig.typeSystem || config.typeSystem,
+        onProgress: (event) => {
+          // Forward progress events with container context
+          onProgress?.({
+            ...event,
+            message: `[${containerConfig.name}] ${event.message || ''}`,
+          })
+        },
+      })
+
+      onProgress?.({
+        stage: 'inference_complete',
+        message: `[${containerConfig.name}] Schema inference complete for ${typeName}`,
+        metadata: {
+          container: containerConfig.name,
+          typeName,
+          documentsAnalyzed: sampleResult.documents.length,
+        },
+      })
+
+      return {
+        container: containerRef,
+        typeName,
+        schema: inferredSchema,
+      }
+    }),
+  )
 
   // Report sampling complete
+  const totalDocuments = containerInfos.reduce((sum, info) => sum + info.schema.stats.totalDocuments, 0)
   onProgress?.({
     stage: 'sampling_complete',
     progress: 100,
-    message: `Sampling complete: ${sampleResult.documents.length} documents (${sampleResult.ruConsumed.toFixed(2)} RU)`,
+    message: `Sampling complete: ${totalDocuments} total documents across ${containerInfos.length} containers`,
     metadata: {
-      documentsSampled: sampleResult.documents.length,
-      ruConsumed: sampleResult.ruConsumed,
-      status: sampleResult.status,
+      containerCount: containerInfos.length,
+      totalDocuments,
     },
   })
 
-  // Check cache for existing schema
-  const typeName = config.typeName || config.container
-  let inferredSchema: InferredSchema
-
-  if (cache) {
-    const configHash = await cache.hashConfig(config.typeSystem)
-    const cacheKey = cache.generateKey({
-      database,
-      container,
-      sampleSize: config.sampleSize || 500,
-      configHash,
-    })
-
-    // Try to get from cache
-    const cached = await cache.get(cacheKey)
-    if (cached) {
-      onProgress?.({
-        stage: 'inference_complete',
-        progress: 100,
-        message: 'Schema loaded from cache',
-        metadata: { cached: true },
-      })
-      inferredSchema = cached
-    } else {
-      // Perform inference and cache result
-      onProgress?.({
-        stage: 'inference_started',
-        message: 'Starting schema inference',
-      })
-
-      inferredSchema = inferSchema({
-        documents: sampleResult.documents,
-        typeName,
-        config: config.typeSystem,
-        onProgress,
-      })
-
-      // Store in cache
-      await cache.set(cacheKey, inferredSchema)
-    }
-  } else {
-    // No cache - perform inference directly
-    onProgress?.({
-      stage: 'inference_started',
-      message: 'Starting schema inference',
-    })
-
-    inferredSchema = inferSchema({
-      documents: sampleResult.documents,
-      typeName,
-      config: config.typeSystem,
-      onProgress,
-    })
-  }
-
-  // Generate SDL
-  const sdl = buildGraphQLSDL({
-    schema: inferredSchema,
-    includeQueries: true,
-    onProgress,
+  // Generate unified SDL
+  onProgress?.({
+    stage: 'sdl_generation_started',
+    message: 'Generating unified SDL from all containers',
   })
 
-  // Build resolvers
-  const resolvers = buildResolvers({
-    container: containerRef,
-    typeName,
+  const sdl = buildMultiContainerSDL({ containerInfos })
+
+  onProgress?.({
+    stage: 'sdl_generation_complete',
+    message: 'Unified SDL generation complete',
+  })
+
+  // Build container map for resolver routing
+  const containerMap = new Map<string, Container>()
+  const containerNames: string[] = []
+
+  for (const info of containerInfos) {
+    containerMap.set(info.typeName, info.container)
+    containerNames.push(info.typeName)
+  }
+
+  // Build unified resolvers
+  const resolvers = buildMultiContainerResolvers({
+    containerMap,
     retry: config.retry,
   })
 
@@ -264,17 +514,19 @@ export async function buildCoreSchema(
     resolvers,
   })
 
+  // Calculate total statistics
+  const totalTypes = containerInfos.reduce((sum, info) => sum + info.schema.stats.typesGenerated, 0)
+
   return {
     schema,
     sdl,
-    client, // CRITICAL: Client stays alive for resolvers
-    container: containerRef,
-    typeName,
-    inferredSchema,
+    client,
+    containers: containerMap,
+    containerNames,
     stats: {
-      documentsAnalyzed: inferredSchema.stats.totalDocuments,
-      typesGenerated: inferredSchema.stats.typesGenerated,
-      sampleSize: sampleResult.documents.length,
+      documentsAnalyzed: totalDocuments,
+      typesGenerated: totalTypes,
+      sampleSize: totalDocuments,
     },
   }
 }

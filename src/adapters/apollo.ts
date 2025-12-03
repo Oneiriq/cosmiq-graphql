@@ -4,6 +4,7 @@
  * @module
  */
 
+import type { Container } from '@azure/cosmos'
 import type { GraphQLSchema } from 'graphql'
 import type { CosmosDBSubgraphConfig } from '../types/handler.ts'
 import { buildCoreSchema, type CoreSchemaResult } from './core.ts'
@@ -40,10 +41,10 @@ export type ApolloAdapterResult = {
  * Context object provided to Apollo resolvers
  */
 export type ApolloContext = {
-  /** CosmosDB container instance */
-  container: CoreSchemaResult['container']
-  /** GraphQL type name */
-  typeName: string
+  /** Map of container instances by type name */
+  containers: Map<string, Container>
+  /** Array of all container names */
+  containerNames: string[]
 }
 
 /**
@@ -58,7 +59,7 @@ export type ApolloContext = {
  * @param config - CosmosDB and Apollo configuration
  * @returns Apollo-compatible schema, context factory, and dispose function
  *
- * @example Basic usage with Apollo Server
+ * @example Single container
  * ```ts
  * import { ApolloServer } from '@apollo/server'
  * import { createApolloAdapter } from '@albedosehen/cosmosdb-schemagen/apollo'
@@ -66,7 +67,7 @@ export type ApolloContext = {
  * const adapter = await createApolloAdapter({
  *   connectionString: Deno.env.get('COSMOS_CONN')!,
  *   database: 'myDatabase',
- *   container: 'items',
+ *   containers: [{ name: 'items', typeName: 'Item' }]
  * })
  *
  * const server = new ApolloServer({
@@ -82,12 +83,34 @@ export type ApolloContext = {
  * })
  * ```
  *
+ * @example Multiple containers (unified schema)
+ * ```ts
+ * import { ApolloServer } from '@apollo/server'
+ * import { createApolloAdapter } from '@albedosehen/cosmosdb-schemagen/apollo'
+ *
+ * const adapter = await createApolloAdapter({
+ *   connectionString: Deno.env.get('COSMOS_CONN')!,
+ *   database: 'db1',
+ *   containers: [
+ *     { name: 'users', typeName: 'User' },
+ *     { name: 'listings', typeName: 'Listing' },
+ *     { name: 'files', typeName: 'File' }
+ *   ]
+ * })
+ *
+ * const server = new ApolloServer({
+ *   schema: adapter.schema,
+ * })
+ *
+ * // Single client shared across all containers
+ * ```
+ *
  * @example With custom context
  * ```ts
  * const adapter = await createApolloAdapter({
  *   connectionString: Deno.env.get('COSMOS_CONN')!,
  *   database: 'myDatabase',
- *   container: 'items',
+ *   containers: [{ name: 'items', typeName: 'Item' }]
  * })
  *
  * const server = new ApolloServer({
@@ -104,9 +127,9 @@ export async function createApolloAdapter(
 ): Promise<ApolloAdapterResult> {
   const core = await buildCoreSchema(config)
 
-  const contextFactory = () => ({
-    container: core.container,
-    typeName: core.typeName,
+  const contextFactory: () => ApolloContext = () => ({
+    containers: core.containers,
+    containerNames: core.containerNames,
   })
 
   return {

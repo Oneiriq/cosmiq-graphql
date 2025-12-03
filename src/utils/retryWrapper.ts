@@ -87,59 +87,64 @@ export async function withRetry<T>(
   }
 
   let lastError: unknown
+  const abortController = new AbortController()
 
-  for (let attempt = 0; attempt <= mergedConfig.maxRetries; attempt++) {
-    retryContext.attempt = attempt
-    retryContext.currentAttemptRU = 0
-    retryContext.attemptTimestamps.push(Date.now())
+  try {
+    for (let attempt = 0; attempt <= mergedConfig.maxRetries; attempt++) {
+      retryContext.attempt = attempt
+      retryContext.currentAttemptRU = 0
+      retryContext.attemptTimestamps.push(Date.now())
 
-    try {
-      const result = await fn()
-      return result
-    } catch (error) {
-      lastError = error
+      try {
+        const result = await fn()
+        return result
+      } catch (error) {
+        lastError = error
 
-      const metadata = extractErrorMetadata(error)
-      if (metadata.requestCharge !== undefined) {
-        retryContext.currentAttemptRU = metadata.requestCharge
-        retryContext.totalRUConsumed += metadata.requestCharge
+        const metadata = extractErrorMetadata(error)
+        if (metadata.requestCharge !== undefined) {
+          retryContext.currentAttemptRU = metadata.requestCharge
+          retryContext.totalRUConsumed += metadata.requestCharge
+        }
+
+        if (attempt === mergedConfig.maxRetries) {
+          break
+        }
+
+        const shouldRetryCustom = config.shouldRetry?.(error, attempt)
+        const shouldRetryDefault = isRetryableError(error)
+        const shouldRetry = shouldRetryCustom !== undefined ? shouldRetryCustom : shouldRetryDefault
+
+        if (!shouldRetry) {
+          throw transformCosmosDBError(error, component, retryContext)
+        }
+
+        if (retryContext.totalRUConsumed >= mergedConfig.maxRetryRUBudget) {
+          const transformedError = transformCosmosDBError(error, component, retryContext)
+          throw new Error(
+            `Retry RU budget exhausted: ${retryContext.totalRUConsumed}/${mergedConfig.maxRetryRUBudget} RU. Last error: ${transformedError.message}`,
+          )
+        }
+
+        const errorRetryAfterMs = extractRetryAfterMs(error)
+        const delayMs = calculateRetryDelay({
+          config: mergedConfig,
+          attempt,
+          errorRetryAfterMs,
+        })
+
+        retryContext.delayMs.push(delayMs)
+
+        if (config.onRetry) {
+          config.onRetry(error, attempt, delayMs)
+        }
+
+        await sleep(delayMs, abortController.signal)
       }
-
-      if (attempt === mergedConfig.maxRetries) {
-        break
-      }
-
-      const shouldRetryCustom = config.shouldRetry?.(error, attempt)
-      const shouldRetryDefault = isRetryableError(error)
-      const shouldRetry = shouldRetryCustom !== undefined ? shouldRetryCustom : shouldRetryDefault
-
-      if (!shouldRetry) {
-        throw transformCosmosDBError(error, component, retryContext)
-      }
-
-      if (retryContext.totalRUConsumed >= mergedConfig.maxRetryRUBudget) {
-        const transformedError = transformCosmosDBError(error, component, retryContext)
-        throw new Error(
-          `Retry RU budget exhausted: ${retryContext.totalRUConsumed}/${mergedConfig.maxRetryRUBudget} RU. Last error: ${transformedError.message}`,
-        )
-      }
-
-      const errorRetryAfterMs = extractRetryAfterMs(error)
-      const delayMs = calculateRetryDelay({
-        config: mergedConfig,
-        attempt,
-        errorRetryAfterMs,
-      })
-
-      retryContext.delayMs.push(delayMs)
-
-      if (config.onRetry) {
-        config.onRetry(error, attempt, delayMs)
-      }
-
-      await sleep(delayMs)
     }
-  }
 
-  throw transformCosmosDBError(lastError, component, retryContext)
+    throw transformCosmosDBError(lastError, component, retryContext)
+  } finally {
+    abortController.abort()
+  }
 }

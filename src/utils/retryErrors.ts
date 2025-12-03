@@ -351,11 +351,34 @@ export function calculateRetryDelay({
 }
 
 /**
- * Sleep for specified milliseconds
+ * Sleep for specified milliseconds with optional cancellation
  *
  * @param ms - Milliseconds to sleep
- * @returns Promise that resolves after delay
+ * @param signal - Optional AbortSignal to cancel the sleep
+ * @returns Promise that resolves after delay or rejects if aborted
  */
-export function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new Error('Sleep aborted'))
+      return
+    }
+
+    const timeoutId = setTimeout(() => {
+      cleanup()
+      resolve()
+    }, ms)
+
+    const cleanup = () => {
+      clearTimeout(timeoutId)
+      signal?.removeEventListener('abort', onAbort)
+    }
+
+    const onAbort = () => {
+      cleanup()
+      reject(new Error('Sleep aborted'))
+    }
+
+    signal?.addEventListener('abort', onAbort)
+  })
 }

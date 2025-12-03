@@ -4,6 +4,7 @@
  * @module
  */
 
+import type { Container } from '@azure/cosmos'
 import type { GraphQLSchema } from 'graphql'
 import type { CosmosDBSubgraphConfig } from '../types/handler.ts'
 import { buildCoreSchema, type CoreSchemaResult } from './core.ts'
@@ -14,6 +15,16 @@ import { buildCoreSchema, type CoreSchemaResult } from './core.ts'
 export type YogaAdapterConfig = CosmosDBSubgraphConfig & {
   /** Custom context augmentation function */
   contextFactory?: (baseContext: YogaContext) => Record<string, unknown>
+}
+
+/**
+ * Context object provided to Yoga resolvers
+ */
+export type YogaContext = {
+  /** Map of container instances by type name */
+  containers: Map<string, Container>
+  /** Array of all container names */
+  containerNames: string[]
 }
 
 /**
@@ -37,16 +48,6 @@ export type YogaAdapterResult = {
 }
 
 /**
- * Context object provided to Yoga resolvers
- */
-export type YogaContext = {
-  /** CosmosDB container instance */
-  container: CoreSchemaResult['container']
-  /** GraphQL type name */
-  typeName: string
-}
-
-/**
  * Create GraphQL Yoga adapter for CosmosDB
  *
  * This adapter integrates CosmosDB with GraphQL Yoga by generating
@@ -58,7 +59,7 @@ export type YogaContext = {
  * @param config - CosmosDB and Yoga configuration
  * @returns Yoga-compatible schema, context, and dispose function
  *
- * @example Basic usage with GraphQL Yoga
+ * @example Single container
  * ```ts
  * import { createYoga } from 'graphql-yoga'
  * import { createYogaAdapter } from '@albedosehen/cosmosdb-schemagen/yoga'
@@ -66,7 +67,7 @@ export type YogaContext = {
  * const adapter = await createYogaAdapter({
  *   connectionString: Deno.env.get('COSMOS_CONN')!,
  *   database: 'myDatabase',
- *   container: 'items',
+ *   containers: [{ name: 'items', typeName: 'Item' }]
  * })
  *
  * const yoga = createYoga({
@@ -83,12 +84,35 @@ export type YogaContext = {
  * })
  * ```
  *
+ * @example Multiple containers (unified schema)
+ * ```ts
+ * import { createYoga } from 'graphql-yoga'
+ * import { createYogaAdapter } from '@albedosehen/cosmosdb-schemagen/yoga'
+ *
+ * const adapter = await createYogaAdapter({
+ *   connectionString: Deno.env.get('COSMOS_CONN')!,
+ *   database: 'db1',
+ *   containers: [
+ *     { name: 'users', typeName: 'User' },
+ *     { name: 'listings', typeName: 'Listing' },
+ *     { name: 'files', typeName: 'File' }
+ *   ]
+ * })
+ *
+ * const yoga = createYoga({
+ *   schema: adapter.schema,
+ *   context: adapter.context,
+ * })
+ *
+ * // Single client shared across all containers
+ * ```
+ *
  * @example With custom context augmentation
  * ```ts
  * const adapter = await createYogaAdapter({
  *   connectionString: Deno.env.get('COSMOS_CONN')!,
  *   database: 'myDatabase',
- *   container: 'items',
+ *   containers: [{ name: 'items', typeName: 'Item' }],
  *   contextFactory: (baseContext) => ({
  *     currentUser: getCurrentUser(),
  *     requestId: crypto.randomUUID(),
@@ -110,8 +134,8 @@ export async function createYogaAdapter(
   const core = await buildCoreSchema(config)
 
   const baseContext: YogaContext = {
-    container: core.container,
-    typeName: core.typeName,
+    containers: core.containers,
+    containerNames: core.containerNames,
   }
 
   const context = config.contextFactory ? { ...baseContext, ...config.contextFactory(baseContext) } : baseContext

@@ -375,3 +375,92 @@ export function validateOptionalString(
 
   return value.trim()
 }
+
+/**
+ * Validate CosmosDB subgraph configuration
+ *
+ * Ensures configuration follows the containers-only design:
+ * - Must have at least one container in the containers array
+ * - Container names must be unique
+ * - Container names must be non-empty strings
+ * - Optional fields (typeName, sampleSize) are validated if provided
+ *
+ * @param config - The configuration to validate
+ * @returns The validated configuration
+ * @throws {ValidationError} If configuration is invalid
+ *
+ * @example
+ * ```ts
+ * validateContainerConfig({
+ *   database: 'db1',
+ *   containers: [{ name: 'users' }, { name: 'listings' }]
+ * })
+ * ```
+ */
+export function validateContainerConfig({
+  config,
+  component = 'validateContainerConfig',
+}: {
+  config: {
+    containers?: Array<{ name: string; typeName?: string; sampleSize?: number }>
+  }
+  component?: string
+}): void {
+  // Rule 1: Must have at least one container
+  if (!config.containers || config.containers.length === 0) {
+    throw new ValidationError(
+      'Must specify at least one container in the containers array',
+      createErrorContext({
+        component,
+        metadata: {
+          providedContainers: config.containers ?? 'undefined',
+        },
+      }),
+    )
+  }
+
+  // Rule 2: Validate container names and check for duplicates
+  const containerNames = new Set<string>()
+
+  for (const containerConfig of config.containers) {
+    // Validate container name is non-empty
+    const name = validateRequiredString(containerConfig.name, 'container name', component)
+
+    // Check for duplicates
+    if (containerNames.has(name)) {
+      throw new ValidationError(
+        `Duplicate container name "${name}" found. Container names must be unique in the containers array`,
+        createErrorContext({
+          component,
+          metadata: {
+            duplicateName: name,
+            allNames: Array.from(containerNames),
+          },
+        }),
+      )
+    }
+
+    containerNames.add(name)
+
+    // Validate optional typeName if provided
+    if (containerConfig.typeName !== undefined) {
+      validateOptionalString(containerConfig.typeName, 'typeName', component)
+    }
+
+    // Validate optional sampleSize if provided
+    if (containerConfig.sampleSize !== undefined) {
+      if (!Number.isInteger(containerConfig.sampleSize) || containerConfig.sampleSize <= 0) {
+        throw new ValidationError(
+          `Invalid sampleSize for container "${name}". Must be a positive integer`,
+          createErrorContext({
+            component,
+            metadata: {
+              containerName: name,
+              sampleSize: containerConfig.sampleSize,
+            },
+          }),
+        )
+      }
+    }
+  }
+}

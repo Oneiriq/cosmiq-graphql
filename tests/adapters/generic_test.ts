@@ -14,8 +14,7 @@ Deno.test('generateSDL - validates configuration', async (t) => {
         await generateSDL({
           endpoint: 'https://localhost:8081',
           database: 'testDb',
-          container: 'items',
-          sampleSize: 10,
+          containers: [{ name: 'items', sampleSize: 10 }],
         })
       },
       ConfigurationError,
@@ -29,7 +28,7 @@ Deno.test('generateSDL - validates configuration', async (t) => {
         await generateSDL({
           connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
           database: '',
-          container: 'items',
+          containers: [{ name: 'items' }],
         })
       },
       ValidationError,
@@ -37,17 +36,17 @@ Deno.test('generateSDL - validates configuration', async (t) => {
     )
   })
 
-  await t.step('throws ValidationError when container missing', async () => {
+  await t.step('throws ValidationError when container name is empty', async () => {
     await assertRejects(
       async () => {
         await generateSDL({
           connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
           database: 'testDb',
-          container: '',
+          containers: [{ name: '' }],
         })
       },
       ValidationError,
-      'container is required and cannot be empty',
+      'container name is required and cannot be empty',
     )
   })
 
@@ -56,7 +55,65 @@ Deno.test('generateSDL - validates configuration', async (t) => {
       async () => {
         await generateSDL({
           database: 'testDb',
-          container: 'items',
+          containers: [{ name: 'items' }],
+        })
+      },
+      ConfigurationError,
+      'Either connectionString or endpoint+credential must be provided',
+    )
+  })
+
+  await t.step('throws ValidationError when containers array is empty', async () => {
+    await assertRejects(
+      async () => {
+        await generateSDL({
+          connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
+          database: 'testDb',
+          containers: [],
+        })
+      },
+      ValidationError,
+      'Must specify at least one container',
+    )
+  })
+
+  await t.step('throws ValidationError for duplicate container names', async () => {
+    await assertRejects(
+      async () => {
+        await generateSDL({
+          connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
+          database: 'testDb',
+          containers: [
+            { name: 'users' },
+            { name: 'users' },
+          ],
+        })
+      },
+      ValidationError,
+      'Duplicate container name',
+    )
+  })
+
+  await t.step('throws ValidationError for empty container name', async () => {
+    await assertRejects(
+      async () => {
+        await generateSDL({
+          connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
+          database: 'testDb',
+          containers: [{ name: '' }],
+        })
+      },
+      ValidationError,
+      'container name is required and cannot be empty',
+    )
+  })
+
+  await t.step('throws ConfigurationError when neither connectionString nor endpoint provided', async () => {
+    await assertRejects(
+      async () => {
+        await generateSDL({
+          database: 'testDb',
+          containers: [{ name: 'users' }],
         })
       },
       ConfigurationError,
