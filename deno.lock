@@ -36,6 +36,7 @@
     "jsr:@ts-morph/common@0.24": "0.24.0",
     "npm:@azure/cosmos@4": "4.9.0",
     "npm:@azure/cosmos@^4.9.0": "4.9.0",
+    "npm:@types/node@*": "24.2.0",
     "npm:graphql@^16.12.0": "16.12.0"
   },
   "jsr": {
@@ -310,6 +311,12 @@
         "tslib"
       ]
     },
+    "@types/node@24.2.0": {
+      "integrity": "sha512-3xyG3pMCq3oYCNg7/ZP+E1ooTaGB4cG8JWRsqqOYQdbWNY4zbaV0Ennrd7stjiJEFZCaybcIgpTjJWHRfBSIDw==",
+      "dependencies": [
+        "undici-types"
+      ]
+    },
     "@typespec/ts-http-runtime@0.3.2": {
       "integrity": "sha512-IlqQ/Gv22xUC1r/WQm4StLkYQmaaTsXAhUVsNE0+xiyf0yRFiH5++q78U3bw6bLKDCTmh0uqKB9eG9+Bt75Dkg==",
       "dependencies": [
@@ -358,6 +365,9 @@
     },
     "tslib@2.8.1": {
       "integrity": "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w=="
+    },
+    "undici-types@7.10.0": {
+      "integrity": "sha512-t5Fy/nfn+14LuOc2KNYg75vZqClpAiqscVvMygNnlsHBFpSXdJaYtXMcdNLpl/Qvc3P2cB3s6lOV51nqsFq4ag=="
     }
   },
   "workspace": {

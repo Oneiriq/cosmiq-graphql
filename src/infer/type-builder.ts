@@ -104,12 +104,19 @@ export function createTypeDefinitions({
     currentDepth: 0,
   })
 
+  // Pre-register all nested type names to ensure consistency
+  const nestedTypeNameMap = new Map<string, string>()
+  for (const nestedTypeDef of nestedTypeDefinitions) {
+    const resolvedName = registry.register(nestedTypeDef.name)
+    nestedTypeNameMap.set(nestedTypeDef.name, resolvedName)
+  }
+
   // Convert nested type definitions to GraphQL types with collision detection
   for (const nestedTypeDef of nestedTypeDefinitions) {
     const nestedFields: GraphQLFieldDef[] = []
 
-    // Register type name and get resolved name (with suffix if collision)
-    const resolvedName = registry.register(nestedTypeDef.name)
+    // Use pre-registered name instead of registering again
+    const resolvedName = nestedTypeNameMap.get(nestedTypeDef.name)!
 
     for (const [fieldName, fieldInfo] of nestedTypeDef.fields.entries()) {
       const field = createFieldDefinition({
@@ -119,6 +126,7 @@ export function createTypeDefinitions({
         config,
         parentTypeName: resolvedName,
         registry,
+        nestedTypeNameMap,
       })
       nestedFields.push(field)
     }
@@ -140,6 +148,7 @@ export function createTypeDefinitions({
       config,
       parentTypeName: typeName,
       registry,
+      nestedTypeNameMap,
     })
     rootFields.push(field)
   }
@@ -192,6 +201,7 @@ function createFieldDefinition({
   config,
   parentTypeName,
   registry,
+  nestedTypeNameMap,
 }: {
   fieldName: string
   fieldInfo: FieldInfo
@@ -199,6 +209,7 @@ function createFieldDefinition({
   config?: Partial<TypeSystemConfig>
   parentTypeName: string
   registry?: TypeNameRegistry
+  nestedTypeNameMap?: Map<string, string>
 }): GraphQLFieldDef {
   // Determine if field is required or optional
   const nullability = determineNullability({
@@ -221,8 +232,9 @@ function createFieldDefinition({
       depth: 0, // Depth is handled during inferNestedTypes
     })
 
-    // Use registry to resolve collisions if provided
-    customTypeName = registry ? registry.register(baseName) : baseName
+    // Use pre-registered name from map if available, otherwise register
+    customTypeName = nestedTypeNameMap?.get(baseName) ??
+      (registry ? registry.register(baseName) : baseName)
     graphqlType = customTypeName
   } else if (
     fieldInfo.types.size === 1 ||

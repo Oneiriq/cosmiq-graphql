@@ -5,6 +5,7 @@
  */
 
 import { type Container, CosmosClient } from '@azure/cosmos'
+import { Agent as HttpsAgent } from 'node:https'
 import type { GraphQLSchema } from 'graphql'
 import type { CosmosDBSubgraphConfig, ProgressCallback, Resolvers } from '../types/handler.ts'
 import type { InferredSchema } from '../types/infer.ts'
@@ -303,6 +304,10 @@ function buildMultiContainerResolvers({
 /**
  * Create CosmosDB client from configuration
  *
+ * For local emulator connections (localhost/127.0.0.1), automatically configures
+ * an HTTPS agent that bypasses SSL certificate validation, since the emulator
+ * uses self-signed certificates.
+ *
  * @param config - CosmosDB configuration
  * @returns CosmosDB client instance
  * @throws {ConfigurationError} If authentication configuration is invalid
@@ -310,20 +315,62 @@ function buildMultiContainerResolvers({
 function createCosmosClient(config: CosmosDBSubgraphConfig): CosmosClient {
   if (config.connectionString) {
     const connection = parseConnectionString(config.connectionString)
+    const isLocalEmulator = connection.endpoint.includes('localhost') ||
+      connection.endpoint.includes('127.0.0.1')
+
+    if (isLocalEmulator) {
+      const customAgent = new HttpsAgent({ rejectUnauthorized: false })
+      
+      // @ts-ignore - connectionPolicy and agent properties not in types but accepted by runtime
+      return new CosmosClient({
+        endpoint: connection.endpoint,
+        key: connection.key!,
+        agent: customAgent,
+        connectionPolicy: {
+          enableEndpointDiscovery: false,
+        },
+      })
+    }
+
     return new CosmosClient({
       endpoint: connection.endpoint,
-      key: connection.key,
+      key: connection.key!,
     })
-  } else if (config.endpoint && config.credential) {
-    return new CosmosClient({
+  }
+
+  if (config.endpoint && config.credential) {
+    const isLocalEmulator = config.endpoint.includes('localhost') ||
+      config.endpoint.includes('127.0.0.1')
+
+    const clientConfig: {
+      endpoint: string
+      aadCredentials: {
+        getToken: (
+          scopes: string | string[],
+        ) => Promise<{ token: string; expiresOnTimestamp: number }>
+      }
+      agent?: HttpsAgent
+    } = {
       endpoint: config.endpoint,
       aadCredentials: config.credential as {
         getToken: (
           scopes: string | string[],
         ) => Promise<{ token: string; expiresOnTimestamp: number }>
       },
-    })
-  } else if (config.endpoint) {
+    }
+
+    if (isLocalEmulator) {
+      clientConfig.agent = new HttpsAgent({ rejectUnauthorized: false })
+      // @ts-ignore - connectionPolicy not in types but accepted by runtime
+      clientConfig.connectionPolicy = {
+        enableEndpointDiscovery: false,
+      }
+    }
+
+    return new CosmosClient(clientConfig as never)
+  }
+
+  if (config.endpoint) {
     throw new ConfigurationError(
       'When using endpoint authentication, credential must be provided',
       createErrorContext({
@@ -334,19 +381,19 @@ function createCosmosClient(config: CosmosDBSubgraphConfig): CosmosClient {
         },
       }),
     )
-  } else {
-    throw new ConfigurationError(
-      'Either connectionString or endpoint+credential must be provided',
-      createErrorContext({
-        component: 'createCosmosClient',
-        metadata: {
-          hasConnectionString: false,
-          hasEndpoint: false,
-          hasCredential: false,
-        },
-      }),
-    )
   }
+
+  throw new ConfigurationError(
+    'Either connectionString or endpoint+credential must be provided',
+    createErrorContext({
+      component: 'createCosmosClient',
+      metadata: {
+        hasConnectionString: false,
+        hasEndpoint: false,
+        hasCredential: false,
+      },
+    }),
+  )
 }
 
 /**

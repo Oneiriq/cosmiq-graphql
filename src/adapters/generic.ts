@@ -6,6 +6,7 @@
 
 import type { GenericSDLConfig, GenericSDLResult } from './types.ts'
 import { validateRequiredString } from '../utils/validation.ts'
+import { buildCoreSchema } from './core.ts'
 
 /**
  * Generate GraphQL SDL from CosmosDB containers
@@ -79,8 +80,6 @@ export async function generateSDL(config: GenericSDLConfig): Promise<GenericSDLR
   // Validate configuration
   validateRequiredString(config.database, 'database', 'generateSDL')
 
-  // Import needed for inline usage
-  const { buildCoreSchema } = await import('./core.ts')
   const core = await buildCoreSchema(config)
 
   try {
