@@ -6,7 +6,8 @@
 
 import { assertEquals, assertExists } from '@std/assert'
 import { buildSchemaWithGraphQL } from '../../src/handler/schema-builder.ts'
-import * as GraphQL from 'graphql'
+import * as GraphQLToolsSchema from '@graphql-tools/schema'
+import { GraphQLObjectType, GraphQLResolveInfo, GraphQLSchema } from 'graphql'
 
 const TEST_SDL = `
 type Query {
@@ -36,22 +37,22 @@ const TEST_RESOLVERS = {
 }
 
 Deno.test('buildSchemaWithGraphQL - schema construction', async (t) => {
-  await t.step('builds schema with consumer GraphQL module', () => {
+  await t.step('builds schema with consumer GraphQL Tools module', () => {
     const schema = buildSchemaWithGraphQL({
       sdl: TEST_SDL,
       resolvers: TEST_RESOLVERS,
-      graphqlModule: GraphQL,
+      graphqlModule: GraphQLToolsSchema,
     })
 
     assertExists(schema)
-    assertEquals(schema instanceof GraphQL.GraphQLSchema, true)
+    assertEquals(schema instanceof GraphQLSchema, true)
   })
 
   await t.step('attaches resolvers to Query fields', () => {
     const schema = buildSchemaWithGraphQL({
       sdl: TEST_SDL,
       resolvers: TEST_RESOLVERS,
-      graphqlModule: GraphQL,
+      graphqlModule: GraphQLToolsSchema,
     })
 
     const queryType = schema.getQueryType()
@@ -68,7 +69,7 @@ Deno.test('buildSchemaWithGraphQL - schema construction', async (t) => {
     const schema = buildSchemaWithGraphQL({
       sdl: TEST_SDL,
       resolvers: TEST_RESOLVERS,
-      graphqlModule: GraphQL,
+      graphqlModule: GraphQLToolsSchema,
     })
 
     const queryType = schema.getQueryType()
@@ -78,7 +79,7 @@ Deno.test('buildSchemaWithGraphQL - schema construction', async (t) => {
     const userResolver = fields.user.resolve
     assertExists(userResolver)
 
-    const result = userResolver({}, { id: '123' }, {}, {} as GraphQL.GraphQLResolveInfo)
+    const result = userResolver({}, { id: '123' }, {}, {} as GraphQLResolveInfo)
     assertEquals(result, {
       id: '123',
       name: 'Test User',
@@ -86,21 +87,21 @@ Deno.test('buildSchemaWithGraphQL - schema construction', async (t) => {
     })
   })
 
-  await t.step('schema uses consumer GraphQL instance', () => {
+  await t.step('schema uses consumer GraphQL Tools instance', () => {
     const schema = buildSchemaWithGraphQL({
       sdl: TEST_SDL,
       resolvers: TEST_RESOLVERS,
-      graphqlModule: GraphQL,
+      graphqlModule: GraphQLToolsSchema,
     })
 
-    // Verify schema was created with the consumer's GraphQL module
-    // by checking instanceof with the consumer's GraphQL.GraphQLSchema
-    assertEquals(schema instanceof GraphQL.GraphQLSchema, true)
+    // Verify schema was created with the consumer's GraphQL Tools module
+    // by checking instanceof with GraphQL types from @graphql-tools/utils
+    assertEquals(schema instanceof GraphQLSchema, true)
 
     // Verify type constructors match
     const queryType = schema.getQueryType()
     assertExists(queryType)
-    assertEquals(queryType instanceof GraphQL.GraphQLObjectType, true)
+    assertEquals(queryType instanceof GraphQLObjectType, true)
   })
 })
 
@@ -130,14 +131,14 @@ type User {
     const schema = buildSchemaWithGraphQL({
       sdl: sdlWithTypeResolvers,
       resolvers: resolversWithType,
-      graphqlModule: GraphQL,
+      graphqlModule: GraphQLToolsSchema,
     })
 
     const userType = schema.getType('User')
     assertExists(userType)
-    assertEquals(userType instanceof GraphQL.GraphQLObjectType, true)
+    assertEquals(userType instanceof GraphQLObjectType, true)
 
-    if (userType instanceof GraphQL.GraphQLObjectType) {
+    if (userType instanceof GraphQLObjectType) {
       const fields = userType.getFields()
       assertExists(fields.fullName)
       assertExists(fields.fullName.resolve)
@@ -148,13 +149,13 @@ type User {
     const schema = buildSchemaWithGraphQL({
       sdl: sdlWithTypeResolvers,
       resolvers: resolversWithType,
-      graphqlModule: GraphQL,
+      graphqlModule: GraphQLToolsSchema,
     })
 
     const userType = schema.getType('User')
     assertExists(userType)
 
-    if (userType instanceof GraphQL.GraphQLObjectType) {
+    if (userType instanceof GraphQLObjectType) {
       const fields = userType.getFields()
       const fullNameResolver = fields.fullName.resolve
       assertExists(fullNameResolver)
@@ -163,7 +164,7 @@ type User {
         { name: 'John' },
         {},
         {},
-        {} as GraphQL.GraphQLResolveInfo,
+        {} as GraphQLResolveInfo,
       )
       assertEquals(result, 'Mr. John')
     }

@@ -278,7 +278,7 @@ describe('createExecutableSchema', () => {
       })
     })
 
-    it('should skip attaching resolvers for non-existent fields', async () => {
+    it('should throw error for resolvers on non-existent fields', () => {
       const sdl = `
         type Query {
           test: String
@@ -287,19 +287,18 @@ describe('createExecutableSchema', () => {
       const resolvers: Resolvers = {
         Query: {
           test: () => 'value',
-          nonExistentField: () => 'should be ignored',
+          nonExistentField: () => 'should cause error',
         },
       }
 
-      const schema = createExecutableSchema({ sdl, resolvers })
-      const query = '{ test }'
-      const result = await execute({
-        schema,
-        document: parse(query),
-      })
-
-      assertEquals(result.data?.test, 'value')
-      assertEquals(result.errors, undefined)
+      // @graphql-tools/schema throws when resolver fields don't exist in schema
+      assertRejects(
+        async () => {
+          createExecutableSchema({ sdl, resolvers })
+        },
+        Error,
+        'nonExistentField defined in resolvers, but not in schema',
+      )
     })
   })
 
@@ -336,7 +335,7 @@ describe('createExecutableSchema', () => {
       )
     })
 
-    it('should handle missing Query type in SDL', () => {
+    it('should throw error when Query type is missing in SDL but defined in resolvers', () => {
       const sdl = `
         type User {
           id: ID!
@@ -348,10 +347,14 @@ describe('createExecutableSchema', () => {
         },
       }
 
-      // Should not throw, but Query resolvers won't be attached
-      const schema = createExecutableSchema({ sdl, resolvers })
-      assertExists(schema)
-      assertEquals(schema.getQueryType(), undefined)
+      // @graphql-tools/schema throws when resolver types don't exist in schema
+      assertRejects(
+        async () => {
+          createExecutableSchema({ sdl, resolvers })
+        },
+        Error,
+        'Query" defined in resolvers, but not in schema',
+      )
     })
   })
 

@@ -4,8 +4,8 @@
  */
 
 import { assertRejects } from '@std/assert'
-import { generateSDL } from '../../src/adapters/generic.ts'
-import { ConfigurationError, ValidationError } from '../../src/errors/mod.ts'
+import { generateSDL } from '../../../src/adapters/generic.ts'
+import { ConfigurationError, ValidationError } from '../../../src/errors/mod.ts'
 
 Deno.test('generateSDL - validates configuration', async (t) => {
   await t.step('throws error when endpoint provided without credential', async () => {

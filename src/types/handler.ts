@@ -269,29 +269,29 @@ export type CosmosDBSubgraphConfig = {
  *
  * @example
  * ```ts
- * import * as GraphQL from 'graphql'
+ * import * as GraphQLToolsSchema from '@graphql-tools/schema'
  *
  * const handler = loadCosmosDBSubgraph('Cosmos', config, {
- *   graphql: GraphQL,
+ *   graphql: GraphQLToolsSchema,
  *   onProgress: (event) => console.log(event.message)
  * })
  * ```
  */
 export type MeshSubgraphOptions = {
   /**
-   * Consumer's graphql module instance
+   * Consumer's @graphql-tools/schema module instance
    *
-   * **Critical for Mesh compose CLI**: Pass your GraphQL module to avoid
+   * **Critical for Mesh compose CLI**: Pass your GraphQL Tools Schema module to avoid
    * "different realm" instanceof errors. The schema will be built using
-   * your GraphQL instance, ensuring compatibility with Mesh.
+   * your GraphQL Tools instance, ensuring compatibility with Mesh.
    *
    * @example
    * ```ts
-   * import * as GraphQL from 'graphql'
-   * loadCosmosDBSubgraph('Cosmos', config, { graphql: GraphQL })
+   * import * as GraphQLToolsSchema from '@graphql-tools/schema'
+   * loadCosmosDBSubgraph('Cosmos', config, { graphql: GraphQLToolsSchema })
    * ```
    */
-  graphql?: typeof import('graphql')
+  graphql?: typeof import('@graphql-tools/schema')
 
   /** Optional progress callback for monitoring schema generation */
   onProgress?: ProgressCallback

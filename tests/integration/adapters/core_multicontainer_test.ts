@@ -5,8 +5,8 @@
 
 import { assertEquals, assertExists, assertStringIncludes } from '@std/assert'
 import { describe, it } from '@std/testing/bdd'
-import { buildCoreSchema } from '../../src/adapters/core.ts'
-import type { CosmosDBSubgraphConfig } from '../../src/types/handler.ts'
+import { buildCoreSchema } from '../../../src/adapters/core.ts'
+import type { CosmosDBSubgraphConfig } from '../../../src/types/handler.ts'
 
 // Mock CosmosDB setup
 const mockConnectionString = 'AccountEndpoint=https://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw=='

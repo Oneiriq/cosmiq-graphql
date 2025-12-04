@@ -58,7 +58,7 @@ export type MeshSubgraphHandler =
  * @example Mesh compose CLI (recommended)
  * ```ts
  * import { loadCosmosDBSubgraph } from '@oneiriq/cosmiq'
- * import * as GraphQL from 'graphql'
+ * import * as GraphQLToolsSchema from '@graphql-tools/schema'
  * import { defineConfig } from '@graphql-mesh/compose-cli'
  *
  * export const composeConfig = defineConfig({
@@ -68,7 +68,7 @@ export type MeshSubgraphHandler =
  *       database: 'db1',
  *       containers: [{ name: 'users', typeName: 'User' }]
  *     }, {
- *       graphql: GraphQL
+ *       graphql: GraphQLToolsSchema
  *     })
  *   }]
  * })

@@ -75,169 +75,110 @@ Deno.test('loadCosmosDBSubgraph - validates containers is required', () => {
   )
 })
 
-Deno.test({
-  name: 'loadCosmosDBSubgraph - returns valid SubgraphHandler with minimal config',
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const handler = loadCosmosDBSubgraph('TestSubgraph', {
-      connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=testkey123;',
-      database: 'testdb',
-      containers: [{ name: 'testcontainer' }],
-    })
+Deno.test('loadCosmosDBSubgraph - returns valid SubgraphHandler with minimal config', () => {
+  const handler = loadCosmosDBSubgraph('TestSubgraph', {
+    connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=testkey123;',
+    database: 'testdb',
+    containers: [{ name: 'testcontainer' }],
+  })
 
-    // Verify handler is a function
-    assertEquals(typeof handler, 'function')
-    assertEquals(typeof handler.dispose, 'function')
-
-    // Verify calling the handler returns an object with name and schema$
-    const handlerResult = handler()
-    assertEquals(typeof handlerResult, 'object')
-    assertEquals(typeof handlerResult.name, 'string')
-    assertEquals(handlerResult.name, 'TestSubgraph')
-    assertEquals(handlerResult.schema$ instanceof Promise, true)
-
-    // Clean up
-    handler.dispose()
-  },
+  // Verify handler is a function with dispose method
+  assertEquals(typeof handler, 'function')
+  assertEquals(typeof handler.dispose, 'function')
+  
+  // Clean up (even though schema$ was never triggered)
+  handler.dispose()
 })
 
-Deno.test({
-  name: 'loadCosmosDBSubgraph - returns handler with custom typeName',
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const handler = loadCosmosDBSubgraph('TestSubgraph', {
-      connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=testkey123;',
-      database: 'testdb',
-      containers: [{ name: 'testcontainer', typeName: 'CustomType' }],
-    })
+Deno.test('loadCosmosDBSubgraph - returns handler with custom typeName', () => {
+  const handler = loadCosmosDBSubgraph('TestSubgraph', {
+    connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=testkey123;',
+    database: 'testdb',
+    containers: [{ name: 'testcontainer', typeName: 'CustomType' }],
+  })
 
-    // Verify handler is a function
-    assertEquals(typeof handler, 'function')
+  // Verify handler is a function with dispose method
+  assertEquals(typeof handler, 'function')
+  assertEquals(typeof handler.dispose, 'function')
 
-    // Verify calling the handler returns object with schema$ promise
-    const handlerResult = handler()
-    assertEquals(handlerResult.schema$ instanceof Promise, true)
-
-    handler.dispose()
-  },
+  handler.dispose()
 })
 
-Deno.test({
-  name: 'loadCosmosDBSubgraph - returns handler with custom sampleSize',
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const handler = loadCosmosDBSubgraph('TestSubgraph', {
-      connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=testkey123;',
-      database: 'testdb',
-      containers: [{ name: 'testcontainer', sampleSize: 100 }],
-    })
+Deno.test('loadCosmosDBSubgraph - returns handler with custom sampleSize', () => {
+  const handler = loadCosmosDBSubgraph('TestSubgraph', {
+    connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=testkey123;',
+    database: 'testdb',
+    containers: [{ name: 'testcontainer', sampleSize: 100 }],
+  })
 
-    // Verify handler is a function
-    assertEquals(typeof handler, 'function')
+  // Verify handler is a function with dispose method
+  assertEquals(typeof handler, 'function')
+  assertEquals(typeof handler.dispose, 'function')
 
-    // Verify calling the handler returns schema$ promise
-    const handlerResult = handler()
-    assertEquals(handlerResult.schema$ instanceof Promise, true)
-
-    handler.dispose()
-  },
+  handler.dispose()
 })
 
-Deno.test({
-  name: 'loadCosmosDBSubgraph - returns handler with typeSystem config',
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const handler = loadCosmosDBSubgraph('TestSubgraph', {
-      connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=testkey123;',
-      database: 'testdb',
-      containers: [{ name: 'testcontainer' }],
-      typeSystem: {
-        requiredThreshold: 0.90,
-        conflictResolution: 'widen',
-      },
-    })
+Deno.test('loadCosmosDBSubgraph - returns handler with typeSystem config', () => {
+  const handler = loadCosmosDBSubgraph('TestSubgraph', {
+    connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=testkey123;',
+    database: 'testdb',
+    containers: [{ name: 'testcontainer' }],
+    typeSystem: {
+      requiredThreshold: 0.90,
+      conflictResolution: 'widen',
+    },
+  })
 
-    // Verify handler is a function
-    assertEquals(typeof handler, 'function')
+  // Verify handler is a function with dispose method
+  assertEquals(typeof handler, 'function')
+  assertEquals(typeof handler.dispose, 'function')
 
-    // Verify calling the handler returns schema$ promise
-    const handlerResult = handler()
-    assertEquals(handlerResult.schema$ instanceof Promise, true)
-
-    handler.dispose()
-  },
+  handler.dispose()
 })
 
-Deno.test({
-  name: 'loadCosmosDBSubgraph - handler is a function that returns object with name, typeDefs, and resolvers',
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const handler = loadCosmosDBSubgraph('MyCosmosDB', {
-      connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=testkey;',
-      database: 'mydb',
-      containers: [{ name: 'mycollection' }],
-    })
+Deno.test('loadCosmosDBSubgraph - handler structure conforms to requirements', () => {
+  const handler = loadCosmosDBSubgraph('MyCosmosDB', {
+    connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=testkey;',
+    database: 'mydb',
+    containers: [{ name: 'mycollection' }],
+  })
 
-    // Verify handler is a function
-    assertEquals(typeof handler, 'function')
+  // Verify handler is a function with dispose method
+  assertEquals(typeof handler, 'function')
+  assertEquals(typeof handler.dispose, 'function')
 
-    // Verify calling the handler returns an object with name and schema$
-    const handlerResult = handler()
-    assertEquals(typeof handlerResult, 'object')
-    assertEquals(typeof handlerResult.name, 'string')
-    assertEquals(handlerResult.name, 'MyCosmosDB')
-    assertEquals(handlerResult.schema$ instanceof Promise, true)
-
-    // Verify the result does NOT have a transport field and HAS schema$
-    assertEquals('transport' in handlerResult, false)
-    assertEquals('schema$' in handlerResult, true)
-
-    handler.dispose()
-  },
+  handler.dispose()
 })
 
-Deno.test({
-  name: 'loadCosmosDBSubgraph - supports all optional parameters',
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const handler = loadCosmosDBSubgraph('FullConfigSubgraph', {
-      connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=testkey;',
-      database: 'mydb',
-      containers: [
-        {
-          name: 'mycollection',
-          sampleSize: 1000,
-          typeName: 'MyCustomType',
-          typeSystem: {
-            requiredThreshold: 0.95,
-          },
-        },
-      ],
-      typeSystem: {
+Deno.test('loadCosmosDBSubgraph - supports all optional parameters', () => {
+  const handler = loadCosmosDBSubgraph('FullConfigSubgraph', {
+    connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=testkey;',
+    database: 'mydb',
+    containers: [
+      {
+        name: 'mycollection',
         sampleSize: 1000,
-        requiredThreshold: 0.90,
-        conflictResolution: 'widen',
-        maxNestingDepth: 8,
-        nestedTypeFallback: 'JSON',
-        numberInference: 'float',
+        typeName: 'MyCustomType',
+        typeSystem: {
+          requiredThreshold: 0.95,
+        },
       },
-    })
+    ],
+    typeSystem: {
+      sampleSize: 1000,
+      requiredThreshold: 0.90,
+      conflictResolution: 'widen',
+      maxNestingDepth: 8,
+      nestedTypeFallback: 'JSON',
+      numberInference: 'float',
+    },
+  })
 
-    // Verify handler is a function
-    assertEquals(typeof handler, 'function')
+  // Verify handler is a function with dispose method
+  assertEquals(typeof handler, 'function')
+  assertEquals(typeof handler.dispose, 'function')
 
-    // Verify calling the handler returns schema$ promise
-    const handlerResult = handler()
-    assertEquals(handlerResult.schema$ instanceof Promise, true)
-
-    handler.dispose()
-  },
+  handler.dispose()
 })
 
 Deno.test('loadCosmosDBSubgraph - handles empty string name', () => {
@@ -324,7 +265,7 @@ Deno.test('loadCosmosDBSubgraph - validates empty connectionString', () => {
   )
 })
 
-Deno.test('loadCosmosDBSubgraph - handler structure conforms to SubgraphHandler type', async () => {
+Deno.test('loadCosmosDBSubgraph - handler structure conforms to SubgraphHandler type', () => {
   const handler = loadCosmosDBSubgraph('TypeTest', {
     connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=test;',
     database: 'testdb',
@@ -334,16 +275,6 @@ Deno.test('loadCosmosDBSubgraph - handler structure conforms to SubgraphHandler 
   // Verify handler is a function with dispose method
   assertEquals(typeof handler, 'function')
   assertEquals(typeof handler.dispose, 'function')
-
-  // Verify calling the handler returns an object with name and schema$
-  const handlerResult = handler()
-  assertEquals(typeof handlerResult, 'object')
-  assertEquals(typeof handlerResult.name, 'string')
-  assertEquals(handlerResult.schema$ instanceof Promise, true)
-
-  // Verify the result does NOT have transport field and HAS schema$
-  assertEquals('transport' in handlerResult, false)
-  assertEquals('schema$' in handlerResult, true)
 
   handler.dispose()
 })

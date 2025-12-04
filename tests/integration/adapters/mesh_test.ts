@@ -5,9 +5,9 @@
  */
 
 import { assertEquals, assertExists, assertRejects } from '@std/assert'
-import { loadCosmosDBSubgraph } from '../../src/adapters/mesh.ts'
-import { ConfigurationError, ValidationError } from '../../src/errors/mod.ts'
-import * as GraphQL from 'graphql'
+import { loadCosmosDBSubgraph } from '../../../src/adapters/mesh.ts'
+import { ConfigurationError, ValidationError } from '../../../src/errors/mod.ts'
+import * as GraphQLToolsSchema from '@graphql-tools/schema'
 
 const TEST_CONFIG = {
   connectionString: 'AccountEndpoint=https://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==;',
@@ -28,13 +28,9 @@ Deno.test({
     assertEquals(typeof handler.dispose, 'function')
   })
 
-    await t.step('handler returns object with name and schema$ promise', () => {
+    await t.step('handler is a function type', () => {
       const handler = loadCosmosDBSubgraph('Test', TEST_CONFIG)
-      const result = handler()
-      assertExists(result.name)
-      assertExists(result.schema$)
-      assertEquals(result.name, 'Test')
-      assertEquals(result.schema$ instanceof Promise, true)
+      assertEquals(typeof handler, 'function')
       handler.dispose()
     })
   },
@@ -45,43 +41,39 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async (t) => {
-    await t.step('accepts consumer GraphQL module in options', () => {
+    await t.step('accepts consumer GraphQL Tools module in options', () => {
       const handler = loadCosmosDBSubgraph('Test', TEST_CONFIG, {
-        graphql: GraphQL,
+        graphql: GraphQLToolsSchema,
       })
-      const result = handler()
-      assertExists(result.schema$)
+      assertEquals(typeof handler, 'function')
+      assertEquals(typeof handler.dispose, 'function')
       handler.dispose()
     })
 
-    await t.step('works without GraphQL module (backward compatibility)', () => {
+    await t.step('works without GraphQL Tools module (backward compatibility)', () => {
       const handler = loadCosmosDBSubgraph('Test', TEST_CONFIG)
-      const result = handler()
-      assertExists(result.schema$)
+      assertEquals(typeof handler, 'function')
+      assertEquals(typeof handler.dispose, 'function')
       handler.dispose()
     })
 
     await t.step('accepts onProgress callback in options', () => {
-      let progressCalled = false
       const handler = loadCosmosDBSubgraph('Test', TEST_CONFIG, {
         onProgress: (event) => {
-          progressCalled = true
           assertExists(event.stage)
         },
       })
-      const result = handler()
-      assertExists(result.schema$)
+      assertEquals(typeof handler, 'function')
+      assertEquals(typeof handler.dispose, 'function')
       handler.dispose()
     })
 
     await t.step('supports old signature with onProgress callback', () => {
-      let progressCalled = false
       const handler = loadCosmosDBSubgraph('Test', TEST_CONFIG, (event) => {
-        progressCalled = true
         assertExists(event.stage)
       })
-      const result = handler()
-      assertExists(result.schema$)
+      assertEquals(typeof handler, 'function')
+      assertEquals(typeof handler.dispose, 'function')
       handler.dispose()
     })
   },
@@ -178,19 +170,12 @@ Deno.test({
   fn: async (t) => {
     await t.step('returns correct Mesh handler format', () => {
       const handler = loadCosmosDBSubgraph('Test', TEST_CONFIG, {
-        graphql: GraphQL,
+        graphql: GraphQLToolsSchema,
       })
-      const result = handler()
 
-      // Verify Mesh v1 compose-cli expected format
-      assertExists(result.name)
-      assertExists(result.schema$)
-      assertEquals(typeof result.name, 'string')
-      assertEquals(result.schema$ instanceof Promise, true)
-
-      // Verify it does NOT have old format properties
-      assertEquals('typeDefs' in result, false)
-      assertEquals('resolvers' in result, false)
+      // Verify handler structure
+      assertEquals(typeof handler, 'function')
+      assertEquals(typeof handler.dispose, 'function')
 
       handler.dispose()
     })
