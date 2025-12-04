@@ -2,6 +2,16 @@
 
 import { build, emptyDir } from 'jsr:@deno/dnt@0.41.3'
 
+// Read version from deno.json
+const denoConfig = JSON.parse(await Deno.readTextFile('./deno.json'))
+const version = denoConfig.version
+
+if (!version) {
+  throw new Error('Version not found in deno.json')
+}
+
+console.log(`Building npm package version ${version}...\n`)
+
 await emptyDir('./npm')
 
 await build({
@@ -12,7 +22,7 @@ await build({
   },
   package: {
     name: '@oneiriq/cosmiq-graphql',
-    version: Deno.args[0] || '0.5.0',
+    version,
     description: 'Data-first GraphQL for Azure CosmosDB',
     license: 'MIT',
     author: 'Shon Thomas <shon@oneiriq.com> (https://oneiriq.com)',

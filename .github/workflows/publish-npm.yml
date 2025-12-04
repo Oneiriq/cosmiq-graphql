@@ -20,7 +20,7 @@ jobs:
         with:
           deno-version: v2.x
       - name: Build npm package
-        run: deno task build npm
+        run: deno task build
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
