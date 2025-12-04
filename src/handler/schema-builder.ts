@@ -51,7 +51,7 @@ export function buildSchemaWithGraphQL({
   sdl,
   resolvers,
   graphqlModule,
-}: BuildSchemaWithGraphQLOptions): ReturnType<typeof graphqlModule.makeExecutableSchema> {
+}: BuildSchemaWithGraphQLOptions): ReturnType<BuildSchemaWithGraphQLOptions['graphqlModule']['makeExecutableSchema']> {
   const { makeExecutableSchema } = graphqlModule
 
   // Build executable schema using consumer's GraphQL Tools module
