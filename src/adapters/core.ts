@@ -42,6 +42,9 @@ export type CoreSchemaResult = {
   /** GraphQL SDL string */
   sdl: string
 
+  /** GraphQL resolvers map */
+  resolvers: Resolvers
+
   /** CosmosDB client instance (adapter must dispose when done) */
   client: CosmosClient
 
@@ -60,6 +63,9 @@ export type CoreSchemaResult = {
     /** Total sample size across all containers */
     sampleSize: number
   }
+
+  /** Subgraph name (if provided) */
+  subgraphName?: string
 }
 
 /**
@@ -435,6 +441,7 @@ export async function buildCoreSchema(
   config: CosmosDBSubgraphConfig,
   onProgress?: ProgressCallback,
   _cache?: SchemaCache,
+  subgraphName?: string,
 ): Promise<CoreSchemaResult> {
   // Validate configuration
   validateContainerConfig({ config, component: 'buildCoreSchema' })
@@ -567,6 +574,7 @@ export async function buildCoreSchema(
   return {
     schema,
     sdl,
+    resolvers,
     client,
     containers: containerMap,
     containerNames,
@@ -575,5 +583,6 @@ export async function buildCoreSchema(
       typesGenerated: totalTypes,
       sampleSize: totalDocuments,
     },
+    subgraphName,
   }
 }

@@ -10,6 +10,13 @@ await build({
   shims: {
     deno: true,
   },
+  mappings: {
+    'npm:graphql@^16.12.0': {
+      name: 'graphql',
+      version: '^16.0.0',
+      peerDependency: true,
+    },
+  },
   package: {
     name: '@albedosehen/cosmosdb-schemagen',
     version: Deno.args[0] || '0.3.0',
@@ -46,7 +53,9 @@ await build({
     },
     dependencies: {
       '@azure/cosmos': '^4.9.0',
-      'graphql': '^16.12.0',
+    },
+    peerDependencies: {
+      'graphql': '^16.0.0',
     },
   },
   postBuild() {

@@ -265,13 +265,46 @@ export type CosmosDBSubgraphConfig = {
 }
 
 /**
- * Mesh-compatible subgraph handler object
+ * Options for Mesh subgraph handler
+ *
+ * @example
+ * ```ts
+ * import * as GraphQL from 'graphql'
+ *
+ * const handler = loadCosmosDBSubgraph('Cosmos', config, {
+ *   graphql: GraphQL,
+ *   onProgress: (event) => console.log(event.message)
+ * })
+ * ```
+ */
+export type MeshSubgraphOptions = {
+  /**
+   * Consumer's graphql module instance
+   *
+   * **Critical for Mesh compose CLI**: Pass your GraphQL module to avoid
+   * "different realm" instanceof errors. The schema will be built using
+   * your GraphQL instance, ensuring compatibility with Mesh.
+   *
+   * @example
+   * ```ts
+   * import * as GraphQL from 'graphql'
+   * loadCosmosDBSubgraph('Cosmos', config, { graphql: GraphQL })
+   * ```
+   */
+  graphql?: typeof import('graphql')
+
+  /** Optional progress callback for monitoring schema generation */
+  onProgress?: ProgressCallback
+}
+
+/**
+ * Mesh-compatible subgraph handler
  *
  * For GraphQL Mesh v1 compose-cli integration.
- * The handler returns an object with name and schema$ properties.
+ * A function that returns the handler configuration with name and schema$ properties.
  * No transport field is needed - Mesh v1 handles this internally.
  */
-export type SubgraphHandler = {
+export type SubgraphHandler = () => {
   name: string
   schema$: Promise<GraphQLSchema>
 }

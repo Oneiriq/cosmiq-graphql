@@ -16,6 +16,8 @@ export type CreateExecutableSchemaOptions = {
   sdl: string
   /** Resolver map for Query and types */
   resolvers: Resolvers
+  /** Optional subgraph name for transport metadata */
+  subgraphName?: string
 }
 
 /**
@@ -70,6 +72,14 @@ export function createExecutableSchema({
       })
     }
   }
+
+  // Add transport metadata for locally-executable schemas
+  // This tells Hive Gateway fusion-runtime to execute resolvers in-process
+  // rather than attempting to import a transport module
+  // For locally executable schemas (in-process execution),
+  // do NOT add transport metadata - let resolvers execute directly
+  // Transport metadata is only for remote subgraphs that require
+  // HTTP/REST/GraphQL transport modules
 
   return schema
 }

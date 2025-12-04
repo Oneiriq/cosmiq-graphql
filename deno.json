@@ -60,7 +60,7 @@
 	},
 	"lint": {
 		"include": ["src/"],
-		"exclude": ["node_modules/", "dist/", "coverage/", "docs/", "documentation/"],
+		"exclude": ["node_modules/", "dist/", "coverage/", "docs/", "documentation/", "npm/", "npm-test/"],
 		"rules": {
 			"tags": ["recommended"],
 			"include": [
@@ -92,7 +92,7 @@
 		"singleQuote": true,
 		"proseWrap": "preserve",
 		"include": ["src/"],
-		"exclude": ["node_modules/", "dist/", "coverage/", "docs/", "documentation/", "*.json", "*.graphql", "*.md"]
+		"exclude": ["node_modules/", "dist/", "coverage/", "docs/", "documentation/", "*.json", "*.graphql", "*.md", "npm/", "npm-test/"]
 	},
 
 	"imports": {

@@ -6,8 +6,9 @@
 
 import type { CosmosClient } from '@azure/cosmos'
 import type { GraphQLSchema } from 'graphql'
-import type { CosmosDBSubgraphConfig, ProgressCallback } from '../types/handler.ts'
+import type { CosmosDBSubgraphConfig, MeshSubgraphOptions, ProgressCallback } from '../types/handler.ts'
 import { buildCoreSchema } from './core.ts'
+import { buildSchemaWithGraphQL } from '../handler/schema-builder.ts'
 import { ConfigurationError, createErrorContext } from '../errors/mod.ts'
 import { validateContainerConfig, validateRequiredString } from '../utils/validation.ts'
 
@@ -18,22 +19,20 @@ const activeClients = new Map<string, CosmosClient>()
 
 /**
  * Extended SubgraphHandler with disposal capability
+ * A function that returns the handler configuration with schema$
  */
-export type MeshSubgraphHandler = {
-  /**
-   * Name of the subgraph
-   */
-  name: string
-  /**
-   * Promise that resolves to the executable GraphQL schema
-   */
-  schema$: Promise<GraphQLSchema>
-  /**
-   * Dispose the CosmosDB client and clean up resources
-   * Call this when shutting down the Mesh server
-   */
-  dispose: () => void
-}
+export type MeshSubgraphHandler =
+  & (() => {
+    name: string
+    schema$: Promise<GraphQLSchema>
+  })
+  & {
+    /**
+     * Dispose the CosmosDB client and clean up resources
+     * Call this when shutting down the Mesh server
+     */
+    dispose: () => void
+  }
 
 /**
  * Create a GraphQL Mesh subgraph handler for CosmosDB
@@ -47,78 +46,67 @@ export type MeshSubgraphHandler = {
  * to support resolver execution. When shutting down your server, call the `dispose()`
  * method on the handler to properly clean up the client connection.
  *
+ * **IMPORTANT for Mesh compose CLI:**
+ * You must pass your GraphQL module in the options to avoid "different realm"
+ * instanceof errors. The schema will be built using your GraphQL instance.
+ *
  * @param name - Name of the subgraph (used by GraphQL Mesh)
  * @param config - Configuration for the CosmosDB connection and schema generation
- * @param onProgress - Optional progress callback for monitoring schema generation
+ * @param options - Optional configuration (graphql module, progress callback)
  * @returns A GraphQL Mesh-compatible subgraph handler
  *
- * @example Single container
+ * @example Mesh compose CLI (recommended)
  * ```ts
  * import { loadCosmosDBSubgraph } from '@albedosehen/cosmosdb-schemagen'
+ * import * as GraphQL from 'graphql'
+ * import { defineConfig } from '@graphql-mesh/compose-cli'
  *
- * export const handler = loadCosmosDBSubgraph('Cosmos', {
- *   connectionString: Deno.env.get('COSMOS_CONN')!,
- *   database: 'FileService',
- *   containers: [{ name: 'Files', typeName: 'File', sampleSize: 500 }]
+ * export const composeConfig = defineConfig({
+ *   subgraphs: [{
+ *     sourceHandler: loadCosmosDBSubgraph('Cosmos', {
+ *       connectionString: process.env.COSMOS_CONN,
+ *       database: 'db1',
+ *       containers: [{ name: 'users', typeName: 'User' }]
+ *     }, {
+ *       graphql: GraphQL
+ *     })
+ *   }]
  * })
- *
- * // On server shutdown:
- * handler.dispose()
  * ```
  *
- * @example Multiple containers (unified schema)
+ * @example Simple usage (backward compatible)
  * ```ts
  * import { loadCosmosDBSubgraph } from '@albedosehen/cosmosdb-schemagen'
  *
  * export const handler = loadCosmosDBSubgraph('Cosmos', {
- *   connectionString: Deno.env.get('COSMOS_CONN')!,
+ *   connectionString: process.env.COSMOS_CONN,
  *   database: 'db1',
- *   containers: [
- *     { name: 'users', typeName: 'User' },
- *     { name: 'listings', typeName: 'Listing' },
- *     { name: 'files', typeName: 'File' }
- *   ]
- * })
- *
- * // Single client shared across all containers
- * // On server shutdown:
- * handler.dispose()
- * ```
- *
- * @example Using managed identity authentication
- * ```ts
- * import { DefaultAzureCredential } from '@azure/identity'
- *
- * export const handler = loadCosmosDBSubgraph('Cosmos', {
- *   endpoint: 'https://my-cosmos.documents.azure.com:443/',
- *   credential: new DefaultAzureCredential(),
- *   database: 'FileService',
- *   containers: [{ name: 'Files', typeName: 'File' }]
+ *   containers: [{ name: 'users', typeName: 'User' }]
  * })
  *
  * // On server shutdown:
  * handler.dispose()
  * ```
  *
- * @example With server lifecycle integration
+ * @example With progress callback
  * ```ts
- * import { createServer } from '@graphql-mesh/serve-runtime'
- *
- * const handler = loadCosmosDBSubgraph('Cosmos', config)
- * const server = createServer({ ... })
- *
- * // Cleanup on shutdown
- * process.on('SIGTERM', () => {
- *   handler.dispose()
- *   server.close()
+ * export const handler = loadCosmosDBSubgraph('Cosmos', config, {
+ *   onProgress: (event) => console.log(event.message)
  * })
  * ```
  */
 export function loadCosmosDBSubgraph(
   name: string,
   config: CosmosDBSubgraphConfig,
-  onProgress?: ProgressCallback,
+  optionsOrCallback?: MeshSubgraphOptions | ProgressCallback,
 ): MeshSubgraphHandler {
+  // Support backward compatibility: detect old signature (onProgress callback)
+  const isOldSignature = typeof optionsOrCallback === 'function'
+
+  const options: MeshSubgraphOptions = isOldSignature ? { onProgress: optionsOrCallback } : (optionsOrCallback || {})
+
+  const { graphql: consumerGraphQL, onProgress } = options
+
   // Validate inputs
   const subgraphName = validateRequiredString(
     typeof name === 'string' ? name : undefined,
@@ -149,19 +137,46 @@ export function loadCosmosDBSubgraph(
   // Create unique key for this client instance (one client per database)
   const clientKey = `${subgraphName}:${config.database}`
 
-  const handler: MeshSubgraphHandler = {
-    name: subgraphName,
-    schema$: buildMeshSchema(config, onProgress, clientKey),
-    dispose: () => {
-      const client = activeClients.get(clientKey)
-      if (client) {
-        client.dispose()
-        activeClients.delete(clientKey)
+  // Return a FUNCTION (NOT async) that returns the handler object with schema$ promise
+  const handler = () => {
+    const schema$: Promise<GraphQLSchema> = (async () => {
+      const result = await buildCoreSchema(config, onProgress, undefined, subgraphName)
+
+      // Register client for lifecycle management
+      if (clientKey) {
+        activeClients.set(clientKey, result.client)
       }
-    },
+
+      // If consumer provided their GraphQL module, use it to build the schema
+      if (consumerGraphQL) {
+        return buildSchemaWithGraphQL({
+          sdl: result.sdl,
+          resolvers: result.resolvers,
+          graphqlModule: consumerGraphQL,
+        })
+      }
+
+      // Fallback to package's GraphQL module (backward compatibility)
+      return result.schema
+    })()
+
+    return {
+      name: subgraphName,
+      schema$,
+    }
   }
 
-  return handler
+  // Add disposal method to the handler function
+  const handlerWithDispose = handler as MeshSubgraphHandler
+  handlerWithDispose.dispose = () => {
+    const client = activeClients.get(clientKey)
+    if (client) {
+      client.dispose()
+      activeClients.delete(clientKey)
+    }
+  }
+
+  return handlerWithDispose
 }
 
 /**
@@ -197,29 +212,4 @@ export function disposeAllClients(): void {
  */
 export function getActiveClientCount(): number {
   return activeClients.size
-}
-
-/**
- * Build GraphQL schema for Mesh
- *
- * Uses the core schema builder and registers the client for lifecycle management.
- *
- * @param config - CosmosDB subgraph configuration
- * @param onProgress - Optional progress callback
- * @param clientKey - Unique identifier for this client instance
- * @returns Promise resolving to executable GraphQL schema
- */
-async function buildMeshSchema(
-  config: CosmosDBSubgraphConfig,
-  onProgress?: ProgressCallback,
-  clientKey?: string,
-): Promise<GraphQLSchema> {
-  const result = await buildCoreSchema(config, onProgress)
-
-  // Register client for lifecycle management
-  if (clientKey) {
-    activeClients.set(clientKey, result.client)
-  }
-
-  return result.schema
 }
