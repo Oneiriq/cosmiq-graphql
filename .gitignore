@@ -1,4 +1,9 @@
 *
+
+// -- INCLUDE
+
+// -- ROOT Directories
+
 !.github/
 !.github/**
 
@@ -26,16 +31,31 @@
 !tests/
 !tests/**
 
-// Project files
+// -- ROOT FILES
 !.gitignore
+!.markdownlint.json
+!CHANGELOG.md
 !deno.json
 !deno.jsonc
 !deno.lock
 !LICENSE
-!CHANGELOG.md
-!README.md
 !mod.ts
+!README.md
 
-// Do not include generated data
+// -- IGNORE
+
+// -- NPM package artifacts
+npm/
+npm/**
+npm/node_modules/
+npm/node_modules/**
+
+// -- NPM test artifacts
+npm-test/
+npm-test/**
+npm-test/node_modules/
+npm-test/node_modules/**
+
+// -- Seed script artifacts
 scripts/seed/data/
 scripts/seed/data/**
