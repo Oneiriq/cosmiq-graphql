@@ -1,6 +1,6 @@
 # Deno GraphQL Integration Examples
 
-This directory contains comprehensive examples demonstrating how to use `cosmiq` with various GraphQL frameworks and utilities in a Deno environment.
+This directory contains comprehensive examples demonstrating how to use `cosmiq-graphql` with various GraphQL frameworks and utilities in a Deno environment.
 
 ## Overview
 
@@ -15,7 +15,7 @@ All examples:
 
 - Connect to a local CosmosDB emulator
 - Automatically infer schemas from three sample containers (`files`, `users`, `listings`)
-- Demonstrate the core functionality of `cosmiq`
+- Demonstrate the core functionality of `cosmiq-graphql`
 - Include proper error handling and resource cleanup
 
 ## Prerequisites
@@ -169,7 +169,7 @@ Server shutdown complete
 
 A GraphQL server using [Apollo Server](https://www.apollographql.com/docs/apollo-server/) that:
 
-- Integrates with the `cosmiq` Apollo adapter
+- Integrates with the `cosmiq-graphql` Apollo adapter
 - Provides GraphQL Playground for schema exploration
 - Demonstrates production-ready server setup
 - Includes graceful shutdown handling
@@ -263,16 +263,16 @@ Generated SDL Schema:
 type File {
   """Unique identifier"""
   id: ID!
-  
+
   """File name"""
   name: String!
-  
+
   """File size in bytes"""
   size: Int!
-  
+
   """Creation timestamp"""
   created: String!
-  
+
   """Partition key"""
   pk: String!
 }
@@ -280,7 +280,7 @@ type File {
 type Query {
   """Query files by ID"""
   file(id: ID!): File
-  
+
   """Query all files with pagination"""
   files(
     limit: Int

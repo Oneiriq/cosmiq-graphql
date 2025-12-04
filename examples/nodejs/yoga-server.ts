@@ -4,14 +4,14 @@
  *
  * NOTE: This is a Node.js example for reference.
  * To run this example:
- * 1. Install dependencies: npm install @oneiriq/cosmiq graphql graphql-yoga
+ * 1. Install dependencies: npm install @oneiriq/cosmiq-graphql graphql graphql-yoga
  * 2. Run: node --loader ts-node/esm examples/nodejs/yoga-server.ts
  * Or compile with tsc first: tsc && node dist/examples/nodejs/yoga-server.js
  */
 
 import { createServer } from 'node:http'
 import { createYoga } from 'graphql-yoga'
-import { createYogaAdapter } from '@oneiriq/cosmiq/yoga'
+import { createYogaAdapter } from '@oneiriq/cosmiq-graphql/yoga'
 
 const COSMOS_URI = 'https://localhost:8081'
 const COSMOS_PRIMARY_KEY = 'C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw=='

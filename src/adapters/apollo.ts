@@ -61,7 +61,7 @@ export type ApolloContext = {
  * @example Single container
  * ```ts
  * import { ApolloServer } from '@apollo/server'
- * import { createApolloAdapter } from '@oneiriq/cosmiq/apollo'
+ * import { createApolloAdapter } from '@oneiriq/cosmiq-graphql/apollo'
  *
  * const adapter = await createApolloAdapter({
  *   connectionString: Deno.env.get('COSMOS_CONN')!,
@@ -85,7 +85,7 @@ export type ApolloContext = {
  * @example Multiple containers (unified schema)
  * ```ts
  * import { ApolloServer } from '@apollo/server'
- * import { createApolloAdapter } from '@oneiriq/cosmiq/apollo'
+ * import { createApolloAdapter } from '@oneiriq/cosmiq-graphql/apollo'
  *
  * const adapter = await createApolloAdapter({
  *   connectionString: Deno.env.get('COSMOS_CONN')!,

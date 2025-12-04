@@ -1,7 +1,7 @@
 {
-  "name": "cosmiq-nodejs-examples",
+  "name": "cosmiq-graphql-nodejs-examples",
   "version": "1.0.0",
-  "description": "Node.js examples demonstrating GraphQL server integration with CosmosDB using cosmiq",
+  "description": "Node.js examples demonstrating GraphQL server integration with CosmosDB using cosmiq-graphql",
   "license": "MIT",
   "author": "Shon Thomas",
   "type": "module",
@@ -16,11 +16,11 @@
     "graphql": "^16.12.0",
     "graphql-yoga": "^5.17.1",
     "@apollo/server": "^5.2.0",
-    "@oneiriq/cosmiq": "@oneiriq/cosmiq"
+    "@oneiriq/cosmiq-graphql": "@oneiriq/cosmiq-graphql"
   },
   "devDependencies": {
-    "tsx": "^4.19.2",
-    "cross-env": "^7.0.3"
+    "tsx": "^4.21.0",
+    "cross-env": "^10.1.0"
   },
   "overrides": {
     "graphql": "^16.12.0"

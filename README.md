@@ -1,4 +1,4 @@
-# cosmiq
+# Cosmiq GraphQL
 
 [![Deno Version](https://img.shields.io/badge/Deno-v2.5.6-green)](https://deno.land/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
@@ -23,14 +23,14 @@ Data-first GraphQL for Azure CosmosDB. Automatically infers GraphQL schemas from
 
 ## Installation
 
-cosmiq is available as both a jsr and npm package and can be installed via Deno or Node.js.
+cosmiq-graphql is available as both a jsr and npm package and can be installed via Deno or Node.js.
 
 ```bash
 # Deno
-deno add jsr:@oneiriq/cosmiq
+deno add jsr:@oneiriq/cosmiq-graphql
 
 # Node.js
-npm install @oneiriq/cosmiq
+npm install @oneiriq/cosmiq-graphql
 ```
 
 ## Usage Examples
@@ -40,7 +40,7 @@ npm install @oneiriq/cosmiq
 Infer schema structure from CosmosDB documents:
 
 ```typescript
-import { inferSchema, sampleDocuments } from '@oneiriq/cosmiq'
+import { inferSchema, sampleDocuments } from '@oneiriq/cosmiq-graphql'
 import { CosmosClient } from '@azure/cosmos'
 
 const client = new CosmosClient({
@@ -76,7 +76,7 @@ console.log(`Resolved ${schema.stats.conflictsResolved} conflicts`)
 Convert inferred schema to GraphQL SDL:
 
 ```typescript
-import { buildGraphQLSDL } from '@oneiriq/cosmiq'
+import { buildGraphQLSDL } from '@oneiriq/cosmiq-graphql'
 
 const sdl = buildGraphQLSDL({
   schema,
@@ -109,8 +109,8 @@ console.log(sdl)
 Monitor schema generation progress with optional progress callbacks:
 
 ```typescript
-import { loadCosmosDBSubgraph } from '@oneiriq/cosmiq'
-import type { ProgressEvent } from '@oneiriq/cosmiq'
+import { loadCosmosDBSubgraph } from '@oneiriq/cosmiq-graphql'
+import type { ProgressEvent } from '@oneiriq/cosmiq-graphql'
 
 const handler = loadCosmosDBSubgraph('MyData', {
   connectionString: Deno.env.get('COSMOS_CONNECTION_STRING')!,
@@ -175,7 +175,7 @@ Each event includes:
 
 ### Rate Limiting & Retry Configuration
 
-cosmiq automatically handles rate limiting (HTTP 429) and transient errors with built-in retry logic using exponential backoff.
+cosmiq-graphql automatically handles rate limiting (HTTP 429) and transient errors with built-in retry logic using exponential backoff.
 
 **Default Behavior:**
 
@@ -188,7 +188,7 @@ cosmiq automatically handles rate limiting (HTTP 429) and transient errors with 
 **Custom Retry Configuration:**
 
 ```typescript
-import { loadCosmosDBSubgraph } from '@oneiriq/cosmiq'
+import { loadCosmosDBSubgraph } from '@oneiriq/cosmiq-graphql'
 
 const handler = loadCosmosDBSubgraph('MySubgraph', {
   connectionString: process.env.COSMOS_CONN!,
@@ -240,7 +240,7 @@ const handler = loadCosmosDBSubgraph('MySubgraph', {
 
 ### Error Handling
 
-cosmiq provides structured error handling with rich diagnostic metadata to help debug issues while maintaining security.
+cosmiq-graphql provides structured error handling with rich diagnostic metadata to help debug issues while maintaining security.
 
 #### **Error Types:**
 
@@ -262,7 +262,7 @@ import {
   RateLimitError,           // CosmosDB rate limiting (429)
   QueryFailedError,         // Query execution failures
   ServiceUnavailableError   // Service unavailable (503)
-} from '@oneiriq/cosmiq'
+} from '@oneiriq/cosmiq-graphql'
 ```
 
 **Error Context:**
@@ -312,7 +312,7 @@ import {
   CosmosDBError,
   RateLimitError,
   ValidationError
-} from '@oneiriq/cosmiq'
+} from '@oneiriq/cosmiq-graphql'
 
 try {
   const result = await generateSDL({
@@ -370,7 +370,7 @@ Use with GraphQL Mesh for a complete GraphQL API:
 
 ```typescript
 import { defineConfig } from '@graphql-mesh/compose-cli'
-import { loadCosmosDBSubgraph } from '@oneiriq/cosmiq'
+import { loadCosmosDBSubgraph } from '@oneiriq/cosmiq-graphql'
 
 export const composeConfig = defineConfig({
   subgraphs: [

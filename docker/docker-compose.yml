@@ -1,5 +1,5 @@
 networks:
-  cosmiq-network:
+  cosmiq-graphql-network:
     driver: bridge
     ipam:
       config:
@@ -15,7 +15,7 @@ services:
     ports:
       - "11000-11002:10000-10002"
     networks:
-      cosmiq-network:
+      cosmiq-graphql-network:
         ipv4_address: 172.1.100.4
     volumes:
       - ~/.azurite_vol:/data
@@ -33,7 +33,7 @@ services:
       - DATABASE_NAME=db1
       - CONTAINER_NAME=test
     networks:
-      cosmiq-network:
+      cosmiq-graphql-network:
         ipv4_address: 172.1.100.5
     volumes:
       - ~/.azurite_vol:/data
@@ -50,7 +50,7 @@ services:
       - "8081:8081"
       - "10250-10255:10250-10255"
     networks:
-      cosmiq-network:
+      cosmiq-graphql-network:
         ipv4_address: 172.1.100.10
     deploy:
       resources:

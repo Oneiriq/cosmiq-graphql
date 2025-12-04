@@ -11,7 +11,7 @@ await build({
     deno: true,
   },
   package: {
-    name: '@oneiriq/cosmiq',
+    name: '@oneiriq/cosmiq-graphql',
     version: Deno.args[0] || '0.3.0',
     description: 'Data-first GraphQL for Azure CosmosDB',
     license: 'MIT',
@@ -21,12 +21,12 @@ await build({
     },
     repository: {
       type: 'git',
-      url: 'git+https://github.com/albedosehen/cosmiq.git',
+      url: 'git+https://github.com/albedosehen/cosmiq-graphql.git',
     },
     bugs: {
-      url: 'https://github.com/albedosehen/cosmiq/issues',
+      url: 'https://github.com/albedosehen/cosmiq-graphql/issues',
     },
-    homepage: 'https://github.com/albedosehen/cosmiq#readme',
+    homepage: 'https://github.com/albedosehen/cosmiq-graphql#readme',
     keywords: [
       'cosmosdb',
       'sdl',

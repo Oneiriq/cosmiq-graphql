@@ -4,14 +4,14 @@
  *
  * NOTE: This is a Node.js example for reference.
  * To run this example:
- * 1. Install dependencies: npm install @oneiriq/cosmiq @apollo/server graphql
+ * 1. Install dependencies: npm install @oneiriq/cosmiq-graphql @apollo/server graphql
  * 2. Run: node --loader ts-node/esm examples/nodejs/apollo-server.ts
  * Or compile with tsc first: tsc && node dist/examples/nodejs/apollo-server.js
  */
 
 import { ApolloServer } from '@apollo/server'
 import { startStandaloneServer } from '@apollo/server/standalone'
-import { createApolloAdapter } from '@oneiriq/cosmiq/apollo'
+import { createApolloAdapter } from '@oneiriq/cosmiq-graphql/apollo'
 
 const COSMOS_URI = 'https://localhost:8081'
 const COSMOS_PRIMARY_KEY = 'C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw=='

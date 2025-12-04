@@ -4,12 +4,12 @@
  *
  * NOTE: This is a Node.js example for reference.
  * To run this example:
- * 1. Install dependencies: npm install @oneiriq/cosmiq
+ * 1. Install dependencies: npm install @oneiriq/cosmiq-graphql
  * 2. Run: node --loader ts-node/esm examples/nodejs/cosmosdb-sdl-spec.ts
  * Or compile with tsc first: tsc && node dist/examples/nodejs/cosmosdb-sdl-spec.js
  */
 
-import { generateSDL } from '@oneiriq/cosmiq/generic'
+import { generateSDL } from '@oneiriq/cosmiq-graphql/generic'
 
 const COSMOS_URI = 'https://localhost:8081'
 const COSMOS_PRIMARY_KEY = 'C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw=='

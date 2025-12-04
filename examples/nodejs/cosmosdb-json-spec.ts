@@ -4,13 +4,13 @@
  *
  * NOTE: This is a Node.js example for reference.
  * To run this example:
- * 1. Install dependencies: npm install @oneiriq/cosmiq
+ * 1. Install dependencies: npm install @oneiriq/cosmiq-graphql
  * 2. Run: node --loader ts-node/esm examples/nodejs/cosmosdb-json-spec.ts
  * Or compile with tsc first: tsc && node dist/examples/nodejs/cosmosdb-json-spec.js
  */
 
 import { CosmosClient } from '@azure/cosmos'
-import { sampleDocuments, inferSchema } from '@oneiriq/cosmiq'
+import { sampleDocuments, inferSchema } from '@oneiriq/cosmiq-graphql'
 
 const COSMOS_URI = 'https://localhost:8081'
 const COSMOS_PRIMARY_KEY = 'C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw=='
