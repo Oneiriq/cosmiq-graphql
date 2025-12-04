@@ -1,12 +1,6 @@
 /**
  * CosmosDB JSON Schema Inference Example (Node.js)
  * Demonstrates inferring schema structure from CosmosDB and outputting as JSON
- *
- * NOTE: This is a Node.js example for reference.
- * To run this example:
- * 1. Install dependencies: npm install @oneiriq/cosmiq-graphql
- * 2. Run: node --loader ts-node/esm examples/nodejs/cosmosdb-json-spec.ts
- * Or compile with tsc first: tsc && node dist/examples/nodejs/cosmosdb-json-spec.js
  */
 
 import { CosmosClient } from '@azure/cosmos'

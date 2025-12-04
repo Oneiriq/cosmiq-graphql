@@ -124,14 +124,10 @@ await build({
       graphql: {
         optional: true
       }
-      // 'graphql-yoga': {
-      //   optional: true,
-      // },
-      // '@apollo/server': {
-      //   optional: true,
-      // },
     },
   },
+
+  // This is to take care of any shenanigans @dnt or dependencies may have
   async postBuild() {
     Deno.copyFileSync('LICENSE', 'npm/LICENSE')
     Deno.copyFileSync('README.md', 'npm/README.md')
@@ -141,7 +137,7 @@ await build({
     const pkgRaw = await Deno.readTextFile(pkgPath)
     const pkg = JSON.parse(pkgRaw)
 
-    // remove @graphql-tools packages from dependencies if dnt added them
+    // Remove @graphql-tools packages from dependencies if dnt added them
     const packagesToRemove = ['@graphql-tools/schema', '@graphql-tools/utils', '@graphql-tools/executor']
     if (pkg.dependencies) {
       for (const pkgName of packagesToRemove) {

@@ -1,12 +1,6 @@
 /**
  * CosmosDB SDL Schema Generation Example (Node.js)
  * Demonstrates generating GraphQL SDL schema from CosmosDB containers
- *
- * NOTE: This is a Node.js example for reference.
- * To run this example:
- * 1. Install dependencies: npm install @oneiriq/cosmiq-graphql
- * 2. Run: node --loader ts-node/esm examples/nodejs/cosmosdb-sdl-spec.ts
- * Or compile with tsc first: tsc && node dist/examples/nodejs/cosmosdb-sdl-spec.js
  */
 
 import { generateSDL } from '@oneiriq/cosmiq-graphql/generic'

@@ -45,7 +45,7 @@
 // -- IGNORE
 
 // -- Examples artifacts
-examples/package-lock.json
+examples/**/*lock.json
 
 **/node_modules/
 **/node_modules/**

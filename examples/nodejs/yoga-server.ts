@@ -1,12 +1,6 @@
 /**
  * GraphQL Yoga Server Example (Node.js)
  * Demonstrates using the Yoga adapter to serve a data-first schema from CosmosDB
- *
- * NOTE: This is a Node.js example for reference.
- * To run this example:
- * 1. Install dependencies: npm install @oneiriq/cosmiq-graphql graphql graphql-yoga
- * 2. Run: node --loader ts-node/esm examples/nodejs/yoga-server.ts
- * Or compile with tsc first: tsc && node dist/examples/nodejs/yoga-server.js
  */
 
 import { createServer } from 'node:http'
