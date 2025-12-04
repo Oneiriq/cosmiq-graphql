@@ -12,7 +12,7 @@ await build({
   },
   package: {
     name: '@oneiriq/cosmiq-graphql',
-    version: Deno.args[0] || '0.3.0',
+    version: Deno.args[0] || '0.5.0',
     description: 'Data-first GraphQL for Azure CosmosDB',
     license: 'MIT',
     author: 'Shon Thomas <shon@oneiriq.com> (https://oneiriq.com)',

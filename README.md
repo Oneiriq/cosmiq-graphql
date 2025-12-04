@@ -1,7 +1,6 @@
 # Cosmiq GraphQL
 
-[![Deno Version](https://img.shields.io/badge/Deno-v2.5.6-green)](https://deno.land/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![JSR Version](https://img.shields.io/jsr/v/@oneiriq/cosmiq-graphql)](https://jsr.io/@oneiriq/cosmiq-graphql) [![NPM Version](https://img.shields.io/npm/v/@oneiriq/cosmiq-graphql)](https://www.npmjs.com/package/@oneiriq/cosmiq-graphql) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 Data-first GraphQL for Azure CosmosDB. Automatically infers GraphQL schemas from your documents, analyzes actual data structure, generates type-safe GraphQL SDL, and integrates seamlessly with GraphQL Mesh, Hive, Yoga, and Apollo Server.
 
@@ -475,24 +474,16 @@ Then open `http://localhost:4000/graphql` in your browser to access GraphiQL.
 
 **Documentation:** See [`examples/deno/README.md`](./examples/deno/README.md) for detailed setup instructions, configuration options, troubleshooting, and example queries.
 
-## Development
+## GraphQL Mesh/Hive Known Limitations
 
-```bash
-# Run tests
-deno task test
+- GraphQL Mesh integration is currently incompatible due to underlying transport limitations. Use the generic SDL adapter as a workaround.
+- GraphQL Hive has the same incompatibility as GraphQL Mesh. Use the generic SDL adapter to upload schemas instead.
 
-# Run tests with coverage
-deno task test:coverage
+## CosmosDB Considerations
 
-# Format code
-deno task fmt
-
-# Lint code
-deno task lint
-
-# Type check
-deno task check
-```
+- Large containers with highly variable document structures may lead to complex schemas. Consider increasing sample size or refining type resolution settings.
+- CosmosDB's RU consumption during sampling may incur costs. Monitor RU usage in production environments.
+- Some advanced CosmosDB features (e.g., multi-region writes, custom indexing policies) are not directly modeled in the GraphQL schema.
 
 ## License
 

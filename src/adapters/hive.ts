@@ -1,6 +1,10 @@
 /**
  * Hive Schema Registry Adapter
  * Upload and validate CosmosDB schemas in Hive Schema Registry
+ *
+ * KNOWN ISSUE:
+ *  Due to underlying transport differences within GraphQL Mesh, this adapter currently will not work as expected.
+ *  This package remains here for future interoperability once this issue is better understood/resolved.
  * @module
  */
 

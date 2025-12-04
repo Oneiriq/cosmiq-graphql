@@ -11,22 +11,20 @@ jobs:
   test:
     uses: ./.github/workflows/test.yml
 
-# Pre-emptive publishing jobs (disabled for now)
+  publish-jsr:
+    if: github.ref == 'refs/heads/main'
+    needs: [check, test]
+    uses: ./.github/workflows/publish-jsr.yml
+    permissions:
+      contents: read
+      id-token: write
 
-  # publish-jsr:
-  #   if: github.ref == 'refs/heads/main'
-  #   needs: [check, test]
-  #   uses: ./.github/workflows/publish-jsr.yml
-  #   permissions:
-  #     contents: read
-  #     id-token: write
-
-  # publish-npm:
-  #   if: github.ref == 'refs/heads/main'
-  #   needs: [check, test]
-  #   uses: ./.github/workflows/publish-npm.yml
-  #   secrets:
-  #     NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-  #   permissions:
-  #     contents: read
-  #     id-token: write
+  publish-npm:
+    if: github.ref == 'refs/heads/main'
+    needs: [check, test]
+    uses: ./.github/workflows/publish-npm.yml
+    secrets:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    permissions:
+      contents: read
+      id-token: write
