@@ -17,7 +17,7 @@ import {
   generateCosmosEtag,
   generateCosmosRid,
   generateCosmosTimestamp
-} from './utils.ts';
+} from '../utils.ts';
 
 /**
  * User document type (generator-specific, not for main codebase)

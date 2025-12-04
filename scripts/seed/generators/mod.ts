@@ -3,6 +3,6 @@
  * @module
  */
 
-export * from './users.ts';
-export * from './files.ts';
-export * from './listings.ts';
+export * from './/marketplace/users.ts';
+export * from './/marketplace/files.ts';
+export * from './/marketplace/listings.ts';

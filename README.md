@@ -3,7 +3,7 @@
 [![Deno Version](https://img.shields.io/badge/Deno-v2.5.6-green)](https://deno.land/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-A data-first schema generator for Azure CosmosDB that automatically infers GraphQL schemas from your documents. Analyzes actual data structure, generates type-safe GraphQL SDL, and integrates seamlessly with GraphQL Mesh / Hive / Yoga, and Apollo Server for Deno or NodeJS.
+A data-first schema generator for Azure CosmosDB that automatically infers GraphQL schemas from your documents. Analyzes actual data structure, generates type-safe GraphQL SDL, and integrates seamlessly with GraphQL Mesh / Hive / Yoga, and Apollo Server.
 
 ## What It Does
 
@@ -14,6 +14,12 @@ A data-first schema generator for Azure CosmosDB that automatically infers Graph
 5. Creates executable GraphQL schemas for GraphQL Mesh
 
 **Key Feature**: Schema inference is dynamic and data-driven. No hardcoded types or business logic - the library discovers patterns directly from your data.
+
+## Requirements
+
+- Deno `v2.5+` or Node.js `v18+`
+- Azure CosmosDB account with read access to target containers or local CosmosDB emulator
+- TypeScript `v5.0+` (for development)
 
 ## Installation
 
@@ -37,7 +43,6 @@ Infer schema structure from CosmosDB documents:
 import { inferSchema, sampleDocuments } from '@albedosehen/cosmosdb-schemagen'
 import { CosmosClient } from '@azure/cosmos'
 
-// Connect to CosmosDB
 const client = new CosmosClient({
   endpoint: Deno.env.get('COSMOS_ENDPOINT')!,
   key: Deno.env.get('COSMOS_KEY')!
@@ -47,19 +52,17 @@ const container = client
   .database('myDatabase')
   .container('myContainer')
 
-// Sample documents
 const documents = await sampleDocuments({
   container,
   sampleSize: 500
 })
 
-// Infer schema from documents
 const schema = inferSchema({
   documents,
   typeName: 'Document',
   config: {
-    requiredThreshold: 0.95,  // Fields present in 95%+ of documents are required
-    conflictResolution: 'widen'  // Handle type conflicts by widening to most general type
+    requiredThreshold: 0.95,
+    conflictResolution: 'widen'
   }
 })
 
@@ -293,6 +296,7 @@ try {
 **Security Considerations:**
 
 Error metadata is sanitized to prevent credential leakage:
+
 - Connection strings are `'[redacted]'`
 - Endpoints are `'[redacted]'`
 - API keys are never included
@@ -442,6 +446,34 @@ const handler = loadCosmosDBSubgraph('Data', {
 - **`InferSchemaOptions`** - Schema inference options
 
 See [`src/types/handler.ts`](./src/types/handler.ts) and [`src/types/infer.ts`](./src/types/infer.ts) for complete type definitions.
+
+## Examples
+
+### GraphQL Yoga Server
+
+A complete, runnable example that demonstrates serving a data-first GraphQL API using the Yoga adapter.
+
+**Location:** [`examples/deno/yoga-server.ts`](./examples/deno/yoga-server.ts)
+
+**Features:**
+
+- Connects to local CosmosDB emulator
+- Automatically infers schemas from multiple containers
+- Serves GraphQL API with interactive GraphiQL interface
+- Demonstrates pagination, filtering, and sorting
+- Graceful shutdown with resource cleanup
+- Cross-platform support (Windows, Mac, Linux)
+
+**Quick Start:**
+
+```bash
+# Ensure CosmosDB emulator is running at https://localhost:8081
+deno run --allow-net --allow-env --unsafely-ignore-certificate-errors=localhost,127.0.0.1 examples/deno/yoga-server.ts
+```
+
+Then open `http://localhost:4000/graphql` in your browser to access GraphiQL.
+
+**Documentation:** See [`examples/deno/README.md`](./examples/deno/README.md) for detailed setup instructions, configuration options, troubleshooting, and example queries.
 
 ## Development
 
