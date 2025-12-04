@@ -21,7 +21,7 @@ import { buildCoreSchema } from './core.ts'
  *
  * @example Single container
  * ```ts
- * import { generateSDL } from '@albedosehen/cosmosdb-schemagen/generic'
+ * import { generateSDL } from '@oneiriq/cosmiq/generic'
  *
  * const result = await generateSDL({
  *   connectionString: Deno.env.get('COSMOS_CONN')!,
@@ -35,7 +35,7 @@ import { buildCoreSchema } from './core.ts'
  *
  * @example Multiple containers (unified schema)
  * ```ts
- * import { generateSDL } from '@albedosehen/cosmosdb-schemagen/generic'
+ * import { generateSDL } from '@oneiriq/cosmiq/generic'
  *
  * const result = await generateSDL({
  *   connectionString: Deno.env.get('COSMOS_CONN')!,

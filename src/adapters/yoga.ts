@@ -62,7 +62,7 @@ export type YogaAdapterResult = {
  * @example Single container
  * ```ts
  * import { createYoga } from 'graphql-yoga'
- * import { createYogaAdapter } from '@albedosehen/cosmosdb-schemagen/yoga'
+ * import { createYogaAdapter } from '@oneiriq/cosmiq/yoga'
  *
  * const adapter = await createYogaAdapter({
  *   connectionString: Deno.env.get('COSMOS_CONN')!,
@@ -87,7 +87,7 @@ export type YogaAdapterResult = {
  * @example Multiple containers (unified schema)
  * ```ts
  * import { createYoga } from 'graphql-yoga'
- * import { createYogaAdapter } from '@albedosehen/cosmosdb-schemagen/yoga'
+ * import { createYogaAdapter } from '@oneiriq/cosmiq/yoga'
  *
  * const adapter = await createYogaAdapter({
  *   connectionString: Deno.env.get('COSMOS_CONN')!,

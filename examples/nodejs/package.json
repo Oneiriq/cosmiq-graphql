@@ -1,0 +1,12 @@
+{
+  "name": "cosmiq-nodejs-examples",
+  "version": "1.0.0",
+  "description": "> **⚠️ IMPORTANT NOTICE:** These are **reference implementations only** and do not execute as-is. They demonstrate how to adapt `cosmiq` for Node.js environments but require additional setup and modifications.",
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}

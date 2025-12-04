@@ -82,7 +82,7 @@ export type HiveAdapterResult = {
  *
  * @example Single container
  * ```ts
- * import { uploadToHive } from '@albedosehen/cosmosdb-schemagen/hive'
+ * import { uploadToHive } from '@oneiriq/cosmiq/hive'
  *
  * const result = await uploadToHive({
  *   connectionString: Deno.env.get('COSMOS_CONN')!,

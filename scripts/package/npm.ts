@@ -18,7 +18,7 @@ await build({
     },
   },
   package: {
-    name: '@albedosehen/cosmosdb-schemagen',
+    name: '@oneiriq/cosmiq',
     version: Deno.args[0] || '0.3.0',
     description: 'A data-first schema SDL generator and validator for Azure Cosmos DB and GraphQL.',
     license: 'MIT',
@@ -30,12 +30,12 @@ await build({
     },
     repository: {
       type: 'git',
-      url: 'git+https://github.com/albedosehen/cosmosdb-schemagen.git'
+      url: 'git+https://github.com/albedosehen/cosmiq.git'
     },
     bugs: {
-      url: 'https://github.com/albedosehen/cosmosdb-schemagen/issues'
+      url: 'https://github.com/albedosehen/cosmiq/issues'
     },
-    homepage: 'https://github.com/albedosehen/cosmosdb-schemagen#readme',
+    homepage: 'https://github.com/albedosehen/cosmiq#readme',
     keywords: [
       'cosmosdb',
       'sdl',

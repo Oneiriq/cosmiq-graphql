@@ -1,8 +1,8 @@
 # Node.js GraphQL Integration Examples (Reference)
 
-> **⚠️ IMPORTANT NOTICE:** These are **reference implementations only** and do not execute as-is. They demonstrate how to adapt `cosmosdb-schemagen` for Node.js environments but require additional setup and modifications.
+> **⚠️ IMPORTANT NOTICE:** These are **reference implementations only** and do not execute as-is. They demonstrate how to adapt `cosmiq` for Node.js environments but require additional setup and modifications.
 
-This directory contains reference examples showing how `cosmosdb-schemagen` patterns can be adapted for Node.js environments. These files serve as templates to help Node.js developers integrate CosmosDB schema generation into their projects.
+This directory contains reference examples showing how `cosmiq` patterns can be adapted for Node.js environments. These files serve as templates to help Node.js developers integrate CosmosDB schema generation into their projects.
 
 ## Reference vs. Executable Examples
 
@@ -28,7 +28,7 @@ All four examples mirror the Deno implementations:
 
 ### 1. GraphQL Yoga Server ([`yoga-server.ts`](./yoga-server.ts))
 
-**Purpose:** Shows how to integrate `cosmosdb-schemagen` with GraphQL Yoga in Node.js
+**Purpose:** Shows how to integrate `cosmiq` with GraphQL Yoga in Node.js
 
 **Key Features:**
 
@@ -189,7 +189,7 @@ import { createYogaAdapter } from '../../src/adapters/yoga.ts'
 **Node.js (if using the npm package):**
 
 ```typescript
-import { createYogaAdapter } from 'cosmosdb-schemagen/adapters/yoga'
+import { createYogaAdapter } from 'cosmiq/adapters/yoga'
 ```
 
 **Node.js (if building from source):**
@@ -263,7 +263,7 @@ Deno.addSignalListener('SIGINT', () => shutdown('SIGINT'))
 **Adapted for Node.js:**
 
 ```typescript
-import { createYogaAdapter } from 'cosmosdb-schemagen/adapters/yoga'
+import { createYogaAdapter } from 'cosmiq/adapters/yoga'
 
 const COSMOS_URI = process.env.COSMOS_URI ?? 'https://localhost:8081'
 
@@ -404,17 +404,17 @@ npx tsx examples/nodejs/yoga-server.ts
 
 ## npm Package Availability
 
-The `cosmosdb-schemagen` package may be available on npm. Check for:
+The `cosmiq` package may be available on npm. Check for:
 
 ```bash
-npm search cosmosdb-schemagen
+npm search cosmiq
 ```
 
 If not yet published, you can:
 
 1. Clone the repository
 2. Build from source using the build script
-3. Install locally: `npm install /path/to/cosmosdb-schemagen`
+3. Install locally: `npm install /path/to/cosmiq`
 
 ## Recommended Workflow
 

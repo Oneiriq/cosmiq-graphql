@@ -1,9 +1,9 @@
-# CosmosDB Schemagen
+# cosmiq
 
 [![Deno Version](https://img.shields.io/badge/Deno-v2.5.6-green)](https://deno.land/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-A data-first schema generator for Azure CosmosDB that automatically infers GraphQL schemas from your documents. Analyzes actual data structure, generates type-safe GraphQL SDL, and integrates seamlessly with GraphQL Mesh / Hive / Yoga, and Apollo Server.
+Data-first GraphQL for Azure CosmosDB. Automatically infers GraphQL schemas from your documents, analyzes actual data structure, generates type-safe GraphQL SDL, and integrates seamlessly with GraphQL Mesh, Hive, Yoga, and Apollo Server.
 
 ## What It Does
 
@@ -23,14 +23,14 @@ A data-first schema generator for Azure CosmosDB that automatically infers Graph
 
 ## Installation
 
-CosmosDB Schemagen is available as both a jsr and npm package and can be installed via Deno or Node.js.
+cosmiq is available as both a jsr and npm package and can be installed via Deno or Node.js.
 
 ```bash
 # Deno
-deno add jsr:@albedosehen/cosmosdb-schemagen
+deno add jsr:@oneiriq/cosmiq
 
 # Node.js
-npm install @albedosehen/cosmosdb-schemagen
+npm install @oneiriq/cosmiq
 ```
 
 ## Usage Examples
@@ -40,7 +40,7 @@ npm install @albedosehen/cosmosdb-schemagen
 Infer schema structure from CosmosDB documents:
 
 ```typescript
-import { inferSchema, sampleDocuments } from '@albedosehen/cosmosdb-schemagen'
+import { inferSchema, sampleDocuments } from '@oneiriq/cosmiq'
 import { CosmosClient } from '@azure/cosmos'
 
 const client = new CosmosClient({
@@ -76,7 +76,7 @@ console.log(`Resolved ${schema.stats.conflictsResolved} conflicts`)
 Convert inferred schema to GraphQL SDL:
 
 ```typescript
-import { buildGraphQLSDL } from '@albedosehen/cosmosdb-schemagen'
+import { buildGraphQLSDL } from '@oneiriq/cosmiq'
 
 const sdl = buildGraphQLSDL({
   schema,
@@ -109,8 +109,8 @@ console.log(sdl)
 Monitor schema generation progress with optional progress callbacks:
 
 ```typescript
-import { loadCosmosDBSubgraph } from '@albedosehen/cosmosdb-schemagen'
-import type { ProgressEvent } from '@albedosehen/cosmosdb-schemagen'
+import { loadCosmosDBSubgraph } from '@oneiriq/cosmiq'
+import type { ProgressEvent } from '@oneiriq/cosmiq'
 
 const handler = loadCosmosDBSubgraph('MyData', {
   connectionString: Deno.env.get('COSMOS_CONNECTION_STRING')!,
@@ -120,11 +120,11 @@ const handler = loadCosmosDBSubgraph('MyData', {
 }, (event: ProgressEvent) => {
   // Monitor progress through all stages
   console.log(`[${event.stage}] ${event.message}`)
-  
+
   if (event.progress !== undefined) {
     console.log(`Progress: ${event.progress}%`)
   }
-  
+
   if (event.metadata) {
     console.log('Metadata:', event.metadata)
   }
@@ -175,7 +175,7 @@ Each event includes:
 
 ### Rate Limiting & Retry Configuration
 
-CosmosDB Schemagen automatically handles rate limiting (HTTP 429) and transient errors with built-in retry logic using exponential backoff.
+cosmiq automatically handles rate limiting (HTTP 429) and transient errors with built-in retry logic using exponential backoff.
 
 **Default Behavior:**
 
@@ -188,13 +188,13 @@ CosmosDB Schemagen automatically handles rate limiting (HTTP 429) and transient 
 **Custom Retry Configuration:**
 
 ```typescript
-import { loadCosmosDBSubgraph } from '@albedosehen/cosmosdb-schemagen'
+import { loadCosmosDBSubgraph } from '@oneiriq/cosmiq'
 
 const handler = loadCosmosDBSubgraph('MySubgraph', {
   connectionString: process.env.COSMOS_CONN!,
   database: 'db',
   container: 'items',
-  
+
   // Optional: Customize retry behavior
   retry: {
     maxRetries: 5,              // Maximum retry attempts (default: 3)
@@ -204,13 +204,13 @@ const handler = loadCosmosDBSubgraph('MySubgraph', {
     jitterFactor: 0.1,          // Jitter percentage (default: 0.1 = 10%)
     respectRetryAfter: true,    // Use retry-after headers (default: true)
     maxRetryRUBudget: 5000,     // Max RU for retries (default: Infinity)
-    
+
     // Optional: Custom retry logic
     shouldRetry: (error, attempt) => {
       // Custom predicate for when to retry
       return attempt < 5
     },
-    
+
     // Optional: Monitor retry attempts
     onRetry: (error, attempt, delayMs) => {
       console.log(`Retry attempt ${attempt + 1}, waiting ${delayMs}ms`)
@@ -233,14 +233,14 @@ const handler = loadCosmosDBSubgraph('MySubgraph', {
 **Retry Strategies:**
 
 - `exponential` (default) - Delay doubles each retry: 100ms → 200ms → 400ms → 800ms
-- `linear` - Delay increases linearly: 100ms → 200ms → 300ms → 400ms  
+- `linear` - Delay increases linearly: 100ms → 200ms → 300ms → 400ms
 - `fixed` - Constant delay between retries: 100ms → 100ms → 100ms
 
 ---
 
 ### Error Handling
 
-CosmosDB Schemagen provides structured error handling with rich diagnostic metadata to help debug issues while maintaining security.
+cosmiq provides structured error handling with rich diagnostic metadata to help debug issues while maintaining security.
 
 #### **Error Types:**
 
@@ -262,7 +262,7 @@ import {
   RateLimitError,           // CosmosDB rate limiting (429)
   QueryFailedError,         // Query execution failures
   ServiceUnavailableError   // Service unavailable (503)
-} from '@albedosehen/cosmosdb-schemagen'
+} from '@oneiriq/cosmiq'
 ```
 
 **Error Context:**
@@ -312,7 +312,7 @@ import {
   CosmosDBError,
   RateLimitError,
   ValidationError
-} from '@albedosehen/cosmosdb-schemagen'
+} from '@oneiriq/cosmiq'
 
 try {
   const result = await generateSDL({
@@ -370,7 +370,7 @@ Use with GraphQL Mesh for a complete GraphQL API:
 
 ```typescript
 import { defineConfig } from '@graphql-mesh/compose-cli'
-import { loadCosmosDBSubgraph } from '@albedosehen/cosmosdb-schemagen'
+import { loadCosmosDBSubgraph } from '@oneiriq/cosmiq'
 
 export const composeConfig = defineConfig({
   subgraphs: [

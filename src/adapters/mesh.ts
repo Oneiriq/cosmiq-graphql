@@ -57,7 +57,7 @@ export type MeshSubgraphHandler =
  *
  * @example Mesh compose CLI (recommended)
  * ```ts
- * import { loadCosmosDBSubgraph } from '@albedosehen/cosmosdb-schemagen'
+ * import { loadCosmosDBSubgraph } from '@oneiriq/cosmiq'
  * import * as GraphQL from 'graphql'
  * import { defineConfig } from '@graphql-mesh/compose-cli'
  *
@@ -76,7 +76,7 @@ export type MeshSubgraphHandler =
  *
  * @example Simple usage (backward compatible)
  * ```ts
- * import { loadCosmosDBSubgraph } from '@albedosehen/cosmosdb-schemagen'
+ * import { loadCosmosDBSubgraph } from '@oneiriq/cosmiq'
  *
  * export const handler = loadCosmosDBSubgraph('Cosmos', {
  *   connectionString: process.env.COSMOS_CONN,
@@ -188,7 +188,7 @@ export function loadCosmosDBSubgraph(
  *
  * @example
  * ```ts
- * import { disposeAllClients } from '@albedosehen/cosmosdb-schemagen/mesh'
+ * import { disposeAllClients } from '@oneiriq/cosmiq/mesh'
  *
  * process.on('SIGTERM', () => {
  *   disposeAllClients()

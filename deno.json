@@ -1,16 +1,16 @@
 {
 	"lock": true,
 
-	"name": "@albedosehen/cosmosdb-schemagen",
-  "version": "0.2.0",
-  "description": "A data-first schema SDL generator and validator for Azure Cosmos DB, GraphQL, and GraphQL Mesh.",
+	"name": "@oneiriq/cosmiq",
+	"version": "0.3.0",
+	"description": "Data-first GraphQL for Azure CosmosDB",
   "author": "Shon Thomas",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/albedosehen/cosmosdb-schemagen.git"
+    "url": "https://github.com/albedosehen/cosmiq.git"
   },
-  "homepage": "https://github.com/albedosehen/cosmosdb-schemagen#readme",
+  "homepage": "https://github.com/albedosehen/cosmiq#readme",
   "keywords": [
     "cosmosdb",
     "sdl",
@@ -43,7 +43,7 @@
 	},
 	"tasks": {
     "bench": "deno bench --allow-read --allow-write --allow-net --allow-sys",
-    "build": "deno run -A scripts/build_npm.ts",
+    "build": "deno run -A scripts/package/npm.ts",
 		"check": "deno check mod.ts src/",
 		"coverage:lcov": "deno coverage coverage/ --lcov --output=coverage.lcov",
 		"coverage": "deno coverage coverage/ --html",
@@ -100,12 +100,12 @@
 	},
 
 	"imports": {
-	   "@azure/cosmos": "npm:@azure/cosmos@^4.9.0",
-	   "graphql": "npm:graphql@^16.12.0",
-	   "graphql-yoga": "npm:graphql-yoga@^5.10.4",
-	   "@apollo/server": "npm:@apollo/server@^4.12.0",
+    "@azure/cosmos": "npm:@azure/cosmos@^4.9.0",
+    "graphql": "npm:graphql@^16.12.0",
+    "graphql-yoga": "npm:graphql-yoga@^5.10.4",
+    "@apollo/server": "npm:@apollo/server@^4.12.0",
 
-	   "@std/assert": "jsr:@std/assert@^1.0.0",
+    "@std/assert": "jsr:@std/assert@^1.0.0",
 		"@std/testing": "jsr:@std/testing@^1.0.0",
 		"@std/testing/bdd": "jsr:@std/testing@^1.0.0/bdd",
 		"@std/testing/mock": "jsr:@std/testing@^1.0.0/mock",

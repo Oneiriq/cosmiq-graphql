@@ -1,6 +1,6 @@
 # Deno GraphQL Integration Examples
 
-This directory contains comprehensive examples demonstrating how to use `cosmosdb-schemagen` with various GraphQL frameworks and utilities in a Deno environment.
+This directory contains comprehensive examples demonstrating how to use `cosmiq` with various GraphQL frameworks and utilities in a Deno environment.
 
 ## Overview
 
@@ -15,7 +15,7 @@ All examples:
 
 - Connect to a local CosmosDB emulator
 - Automatically infer schemas from three sample containers (`files`, `users`, `listings`)
-- Demonstrate the core functionality of `cosmosdb-schemagen`
+- Demonstrate the core functionality of `cosmiq`
 - Include proper error handling and resource cleanup
 
 ## Prerequisites
@@ -169,7 +169,7 @@ Server shutdown complete
 
 A GraphQL server using [Apollo Server](https://www.apollographql.com/docs/apollo-server/) that:
 
-- Integrates with the `cosmosdb-schemagen` Apollo adapter
+- Integrates with the `cosmiq` Apollo adapter
 - Provides GraphQL Playground for schema exploration
 - Demonstrates production-ready server setup
 - Includes graceful shutdown handling
