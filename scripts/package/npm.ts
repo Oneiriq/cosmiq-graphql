@@ -23,17 +23,17 @@ await build({
     description: 'A data-first schema SDL generator and validator for Azure Cosmos DB and GraphQL.',
     license: 'MIT',
     author: {
-      name: 'albedosehen'
+      name: 'Shon Thomas',
     },
     publishConfig: {
-      access: 'public'
+      access: 'public',
     },
     repository: {
       type: 'git',
-      url: 'git+https://github.com/albedosehen/cosmiq.git'
+      url: 'git+https://github.com/albedosehen/cosmiq.git',
     },
     bugs: {
-      url: 'https://github.com/albedosehen/cosmiq/issues'
+      url: 'https://github.com/albedosehen/cosmiq/issues',
     },
     homepage: 'https://github.com/albedosehen/cosmiq#readme',
     keywords: [
@@ -46,16 +46,26 @@ await build({
       'typescript',
       'graphql-mesh',
       'data-first',
-      'codegen'
+      'codegen',
     ],
     engines: {
-      node: '>=18.0.0'
+      node: '>=18.0.0',
     },
     dependencies: {
       '@azure/cosmos': '^4.9.0',
     },
     peerDependencies: {
       'graphql': '^16.0.0',
+      'graphql-yoga': '^5.10.4',
+      '@apollo/server': '^4.12.0',
+    },
+    peerDependenciesMeta: {
+      'graphql-yoga': {
+        optional: true,
+      },
+      '@apollo/server': {
+        optional: true,
+      },
     },
   },
   postBuild() {
@@ -69,7 +79,7 @@ await build({
   typeCheck: 'both',
   declaration: 'separate',
   scriptModule: 'cjs',
-  filterDiagnostic(diagnostic) {
+  filterDiagnostic(_diagnostic) {
     return true
   },
   compilerOptions: {

@@ -1,12 +1,25 @@
 {
   "name": "cosmiq-nodejs-examples",
   "version": "1.0.0",
-  "description": "> **⚠️ IMPORTANT NOTICE:** These are **reference implementations only** and do not execute as-is. They demonstrate how to adapt `cosmiq` for Node.js environments but require additional setup and modifications.",
-  "license": "ISC",
-  "author": "",
-  "type": "commonjs",
-  "main": "index.js",
+  "description": "Node.js examples demonstrating GraphQL server integration with CosmosDB using cosmiq",
+  "license": "MIT",
+  "author": "Shon Thomas",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "example:yoga-server": "cross-env NODE_TLS_REJECT_UNAUTHORIZED=0 tsx yoga-server.ts",
+    "example:apollo-server": "cross-env NODE_TLS_REJECT_UNAUTHORIZED=0 tsx apollo-server.ts",
+    "example:sdl-spec": "cross-env NODE_TLS_REJECT_UNAUTHORIZED=0 tsx cosmosdb-sdl-spec.ts",
+    "example:json-spec": "cross-env NODE_TLS_REJECT_UNAUTHORIZED=0 tsx cosmosdb-json-spec.ts"
+  },
+  "dependencies": {
+    "@azure/cosmos": "^4.9.0",
+    "graphql": "^16.12.0",
+    "graphql-yoga": "^5.10.4",
+    "@apollo/server": "^4.12.0",
+    "@oneiriq/cosmiq": "file:../../npm"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "cross-env": "^7.0.3"
   }
 }
