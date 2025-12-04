@@ -31,12 +31,12 @@ await build({
     },
     repository: {
       type: 'git',
-      url: 'git+https://github.com/albedosehen/cosmiq-graphql.git',
+      url: 'git+https://github.com/oneiriq/cosmiq-graphql.git',
     },
     bugs: {
-      url: 'https://github.com/albedosehen/cosmiq-graphql/issues',
+      url: 'https://github.com/oneiriq/cosmiq-graphql/issues',
     },
-    homepage: 'https://github.com/albedosehen/cosmiq-graphql#readme',
+    homepage: 'https://github.com/oneiriq/cosmiq-graphql#readme',
     keywords: [
       'cosmosdb',
       'sdl',

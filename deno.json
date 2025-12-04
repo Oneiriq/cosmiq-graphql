@@ -2,15 +2,15 @@
 	"lock": true,
 
 	"name": "@oneiriq/cosmiq-graphql",
-	"version": "0.5.2",
+	"version": "0.5.3",
 	"description": "Data-first GraphQL for Azure CosmosDB",
   "author": "Shon Thomas <shon@oneiriq.com> (https://oneiriq.com)",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/albedosehen/cosmiq-graphql.git"
+    "url": "https://github.com/oneiriq/cosmiq-graphql.git"
   },
-  "homepage": "https://github.com/albedosehen/cosmiq-graphql#readme",
+  "homepage": "https://github.com/oneiriq/cosmiq-graphql#readme",
   "keywords": [
     "cosmosdb",
     "sdl",
