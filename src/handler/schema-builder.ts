@@ -4,7 +4,6 @@
  * @module
  */
 
-import type { GraphQLSchema } from 'graphql'
 import type { Resolvers } from '../types/handler.ts'
 
 /**
@@ -52,7 +51,7 @@ export function buildSchemaWithGraphQL({
   sdl,
   resolvers,
   graphqlModule,
-}: BuildSchemaWithGraphQLOptions): GraphQLSchema {
+}: BuildSchemaWithGraphQLOptions): ReturnType<typeof graphqlModule.makeExecutableSchema> {
   const { makeExecutableSchema } = graphqlModule
 
   // Build executable schema using consumer's GraphQL Tools module

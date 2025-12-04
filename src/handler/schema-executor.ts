@@ -5,7 +5,6 @@
  */
 
 import { makeExecutableSchema } from '@graphql-tools/schema'
-import type { GraphQLSchema } from 'graphql'
 import type { Resolvers } from '../types/handler.ts'
 
 /**
@@ -47,7 +46,7 @@ export type CreateExecutableSchemaOptions = {
 export function createExecutableSchema({
   sdl,
   resolvers,
-}: CreateExecutableSchemaOptions): GraphQLSchema {
+}: CreateExecutableSchemaOptions): ReturnType<typeof makeExecutableSchema> {
   // Build executable schema using @graphql-tools/schema
   // makeExecutableSchema automatically attaches resolvers to the schema
   const schema = makeExecutableSchema({

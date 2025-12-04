@@ -4,7 +4,6 @@
  * @module
  */
 
-import type { GraphQLSchema } from 'graphql'
 import type { TypeSystemConfig } from './infer.ts'
 
 /**
@@ -306,7 +305,7 @@ export type MeshSubgraphOptions = {
  */
 export type SubgraphHandler = () => {
   name: string
-  schema$: Promise<GraphQLSchema>
+  schema$: Promise<ReturnType<typeof import('@graphql-tools/schema').makeExecutableSchema>>
 }
 
 /**

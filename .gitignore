@@ -44,17 +44,23 @@
 
 // -- IGNORE
 
+// -- Examples artifacts
+examples/package-lock.json
+
+**/node_modules/
+**/node_modules/**
+
 // -- NPM package artifacts
-npm/
-npm/**
-npm/node_modules/
-npm/node_modules/**
+// npm/
+// npm/**
+// npm/node_modules/
+// npm/node_modules/**
 
 // -- NPM test artifacts
-npm-test/
-npm-test/**
-npm-test/node_modules/
-npm-test/node_modules/**
+// npm-test/
+// npm-test/**
+// npm-test/node_modules/
+// npm-test/node_modules/**
 
 // -- Seed script artifacts
 scripts/seed/data/

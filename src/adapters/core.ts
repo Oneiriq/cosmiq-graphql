@@ -6,7 +6,6 @@
 
 import { type Container, CosmosClient } from '@azure/cosmos'
 import { Agent as HttpsAgent } from 'node:https'
-import type { GraphQLSchema } from 'graphql'
 import type { CosmosDBSubgraphConfig, ProgressCallback, Resolvers } from '../types/handler.ts'
 import type { InferredSchema } from '../types/infer.ts'
 import { parseConnectionString } from '../handler/connection-parser.ts'
@@ -37,7 +36,7 @@ type ContainerInfo = {
  */
 export type CoreSchemaResult = {
   /** Executable GraphQL schema with resolvers */
-  schema: GraphQLSchema
+  schema: ReturnType<typeof import('@graphql-tools/schema').makeExecutableSchema>
 
   /** GraphQL SDL string */
   sdl: string

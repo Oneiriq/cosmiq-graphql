@@ -5,7 +5,6 @@
  */
 
 import type { CosmosClient } from '@azure/cosmos'
-import type { GraphQLSchema } from 'graphql'
 import type { CosmosDBSubgraphConfig, MeshSubgraphOptions, ProgressCallback } from '../types/handler.ts'
 import { buildCoreSchema } from './core.ts'
 import { buildSchemaWithGraphQL } from '../handler/schema-builder.ts'
@@ -24,7 +23,7 @@ const activeClients = new Map<string, CosmosClient>()
 export type MeshSubgraphHandler =
   & (() => {
     name: string
-    schema$: Promise<GraphQLSchema>
+    schema$: Promise<ReturnType<typeof import('@graphql-tools/schema').makeExecutableSchema>>
   })
   & {
     /**
@@ -139,7 +138,7 @@ export function loadCosmosDBSubgraph(
 
   // Return a FUNCTION (NOT async) that returns the handler object with schema$ promise
   const handler = () => {
-    const schema$: Promise<GraphQLSchema> = (async () => {
+    const schema$: Promise<ReturnType<typeof import('@graphql-tools/schema').makeExecutableSchema>> = (async () => {
       const result = await buildCoreSchema(config, onProgress, undefined, subgraphName)
 
       // Register client for lifecycle management

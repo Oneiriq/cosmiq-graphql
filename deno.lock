@@ -41,8 +41,7 @@
     "npm:@graphql-tools/schema@^10.0.30": "10.0.30_graphql@16.12.0",
     "npm:@graphql-tools/utils@^10.11.0": "10.11.0_graphql@16.12.0",
     "npm:@types/node@*": "24.2.0",
-    "npm:graphql-yoga@^5.17.1": "5.17.1_graphql@16.12.0",
-    "npm:graphql@^16.12.0": "16.12.0"
+    "npm:graphql-yoga@^5.17.1": "5.17.1_graphql@16.12.0"
   },
   "jsr": {
     "@david/code-block-writer@13.0.3": {
@@ -1121,8 +1120,7 @@
       "npm:@graphql-tools/executor@^1.5.0",
       "npm:@graphql-tools/schema@^10.0.30",
       "npm:@graphql-tools/utils@^10.11.0",
-      "npm:graphql-yoga@^5.17.1",
-      "npm:graphql@^16.12.0"
+      "npm:graphql-yoga@^5.17.1"
     ]
   }
 }

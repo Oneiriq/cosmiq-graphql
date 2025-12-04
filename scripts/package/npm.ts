@@ -10,21 +10,12 @@ await build({
   shims: {
     deno: true,
   },
-  mappings: {
-    'npm:graphql@^16.12.0': {
-      name: 'graphql',
-      version: '^16.0.0',
-      peerDependency: true,
-    },
-  },
   package: {
     name: '@oneiriq/cosmiq',
     version: Deno.args[0] || '0.3.0',
-    description: 'A data-first schema SDL generator and validator for Azure Cosmos DB and GraphQL.',
+    description: 'Data-first GraphQL for Azure CosmosDB',
     license: 'MIT',
-    author: {
-      name: 'Shon Thomas <shon@oneiriq.com> (https://oneiriq.com)',
-    },
+    author: 'Shon Thomas <shon@oneiriq.com> (https://oneiriq.com)',
     publishConfig: {
       access: 'public',
     },
@@ -109,26 +100,26 @@ await build({
       '@azure/cosmos': '^4.9.0',
     },
     peerDependencies: {
-      'graphql': '^16.0.0',
+      'graphql': '^14.0.0 || ^15.0.0 || ^16.0.0 || ^17.0.0',
       '@graphql-tools/schema': '^10.0.30',
       '@graphql-tools/utils': '^10.11.0',
-      '@graphql-tools/executor': '^1.5.0',
-      'graphql-yoga': '^5.17.1',
-      '@apollo/server': '^5.2.0',
+      '@graphql-tools/executor': '^1.5.0'
     },
     devDependencies: {
-      'graphql': '^16.12.0',
       '@graphql-tools/schema': '^10.0.30',
       '@graphql-tools/utils': '^10.11.0',
       '@graphql-tools/executor': '^1.5.0',
     },
     peerDependenciesMeta: {
-      'graphql-yoga': {
-        optional: true,
-      },
-      '@apollo/server': {
-        optional: true,
-      },
+      graphql: {
+        optional: true
+      }
+      // 'graphql-yoga': {
+      //   optional: true,
+      // },
+      // '@apollo/server': {
+      //   optional: true,
+      // },
     },
   },
   async postBuild() {
@@ -140,8 +131,8 @@ await build({
     const pkgRaw = await Deno.readTextFile(pkgPath)
     const pkg = JSON.parse(pkgRaw)
 
-    // remove graphql and @graphql-tools packages from dependencies if dnt added them
-    const packagesToRemove = ['graphql', '@graphql-tools/schema', '@graphql-tools/utils', '@graphql-tools/executor']
+    // remove @graphql-tools packages from dependencies if dnt added them
+    const packagesToRemove = ['@graphql-tools/schema', '@graphql-tools/utils', '@graphql-tools/executor']
     if (pkg.dependencies) {
       for (const pkgName of packagesToRemove) {
         if (pkg.dependencies[pkgName]) {
@@ -151,14 +142,20 @@ await build({
       }
     }
 
+    // Remove devDependencies entirely - they're only needed during build for type checking
+    if (pkg.devDependencies) {
+      delete pkg.devDependencies
+      console.log('Removed devDependencies from package.json')
+    }
+
     if (!pkg.peerDependencies) pkg.peerDependencies = {}
-    pkg.peerDependencies.graphql = '^16.12.0'
+    pkg.peerDependencies['graphql'] = '^14.0.0 || ^15.0.0 || ^16.0.0 || ^17.0.0'
     pkg.peerDependencies['@graphql-tools/schema'] = '^10.0.30'
     pkg.peerDependencies['@graphql-tools/utils'] = '^10.11.0'
     pkg.peerDependencies['@graphql-tools/executor'] = '^1.5.0'
 
     await Deno.writeTextFile(pkgPath, JSON.stringify(pkg, null, 2) + '\n')
-    console.log('Normalized graphql and @graphql-tools peerDependencies in package.json')
+    console.log('Normalized @graphql-tools peerDependencies in package.json')
 
     try {
       await Deno.remove('npm/package-lock.json')
@@ -166,6 +163,29 @@ await build({
     } catch (error) {
       if (!(error instanceof Deno.errors.NotFound)) throw error
     }
+
+    try {
+      await Deno.remove('npm/node_modules', { recursive: true })
+      console.log('Removed npm/node_modules from build output')
+    } catch (error) {
+      if (!(error instanceof Deno.errors.NotFound)) throw error
+    }
+
+    // Pack the npm directory into a tarball for local installation
+    console.log('Creating tarball for local installation...')
+    const packCommand = new Deno.Command('npm', {
+      args: ['pack'],
+      cwd: 'npm',
+      stdout: 'piped',
+      stderr: 'piped',
+    })
+    const packResult = await packCommand.output()
+    if (!packResult.success) {
+      const error = new TextDecoder().decode(packResult.stderr)
+      throw new Error(`Failed to pack npm directory: ${error}`)
+    }
+    const tarballName = new TextDecoder().decode(packResult.stdout).trim()
+    console.log(`Created tarball: npm/${tarballName}`)
   },
   importMap: './deno.json',
   test: false,

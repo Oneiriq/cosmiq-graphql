@@ -5,7 +5,6 @@
  */
 
 import type { Container } from '@azure/cosmos'
-import type { GraphQLSchema } from 'graphql'
 import type { CosmosDBSubgraphConfig } from '../types/handler.ts'
 import { buildCoreSchema, type CoreSchemaResult } from './core.ts'
 
@@ -22,7 +21,7 @@ export type ApolloAdapterConfig = CosmosDBSubgraphConfig & {
  */
 export type ApolloAdapterResult = {
   /** Executable GraphQL schema for Apollo Server */
-  schema: GraphQLSchema
+  schema: ReturnType<typeof import('@graphql-tools/schema').makeExecutableSchema>
 
   /** SDL string for reference */
   typeDefs: string

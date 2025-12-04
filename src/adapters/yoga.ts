@@ -5,7 +5,6 @@
  */
 
 import type { Container } from '@azure/cosmos'
-import type { GraphQLSchema } from 'graphql'
 import type { CosmosDBSubgraphConfig } from '../types/handler.ts'
 import { buildCoreSchema, type CoreSchemaResult } from './core.ts'
 
@@ -32,7 +31,7 @@ export type YogaContext = {
  */
 export type YogaAdapterResult = {
   /** Executable GraphQL schema for Yoga */
-  schema: GraphQLSchema
+  schema: ReturnType<typeof import('@graphql-tools/schema').makeExecutableSchema>
 
   /** SDL string for reference */
   typeDefs: string
