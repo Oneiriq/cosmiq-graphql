@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2025-12-05
+
+### Added
+
+- **Schema Accuracy Test Suite**: A validation framework for schema inference accuracy
+  - It includes 5 real-world test scenarios covering diverse data patterns that are most likely to cause inference errors:
+    - Flat primitives (strings, numbers, booleans, dates)
+    - Nested objects with deep hierarchies
+    - Polymorphic arrays with mixed types
+    - Sparse fields with varying presence across documents
+    - Partition key patterns (slash-delimited, hyphenated, composite)
+  - The tool validates accuracy across these tests with 6 metrics:
+    - Type detection accuracy (≥85% threshold)
+    - Nullability detection (≥80% threshold)
+    - Field coverage (≥95% threshold)
+    - Nested Types
+    - Conflict resolution
+    - Array handling
+  - **Passing validation results: 5/5 scenarios passing with 100% accuracy across all metrics** for 100 documents per scenario, 500 total documents.
+  - The accuracy test suite uses the test data generators with seeded randomization for reproducible test runs
+  - Integration with CosmosDB emulator (100 documents per scenario, 500 total documents)
+
+### Planned
+
+- **CRUD Resolvers**: Full create, read, update, delete operations for inferred schema types
+  - Auto-generated resolvers for all inferred types
+  - Support for nested object creation and updates
+  - Input validation based on inferred schema
+  - Pagination and filtering for list queries
+  - Optimistic concurrency control with ETags
+  - ...More
+
 ## [0.5.1] - 2025-12-04
 
 ### Fixed
