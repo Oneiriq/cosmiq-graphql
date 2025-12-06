@@ -6,8 +6,8 @@
  *
  * Requirements:
  * - CosmosDB emulator running at https://localhost:8081
- * - Test database: test_scenarios
- * - Containers created automatically for each scenario
+ * - Separate test databases created automatically for each scenario
+ * - Single container per database for test data
  *
  * Run with:
  * deno test --allow-net --unsafely-ignore-certificate-errors=localhost,127.0.0.1 tests/integration/schema_accuracy_test.ts
@@ -37,7 +37,7 @@ import {
 const TEST_CONFIG = {
   endpoint: 'https://localhost:8081',
   key: 'C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==',
-  database: 'test_scenarios',
+  // database: 'test_scenarios', // No longer used as we create separate databases per scenario
   partitionKey: '/pk',
   throughput: 400,
   batchSize: 10,
@@ -109,24 +109,24 @@ function createClient(): CosmosClient {
 }
 
 /**
- * Setup test container by creating database and container if needed.
+ * Setup test database and container by creating database with scenario-specific name and container if needed.
  * This function is idempotent and safe to run multiple times.
  *
  * @param options - Setup options
  */
-async function setupTestContainer({
+async function setupTestDatabase({
   client,
-  database,
+  databaseName,
   containerName,
 }: {
   client: CosmosClient
-  database: ReturnType<CosmosClient['database']>
+  databaseName: string
   containerName: string
-}): Promise<void> {
+}): Promise<ReturnType<CosmosClient['database']>> {
   try {
     // Ensure database exists
-    await client.databases.createIfNotExists({
-      id: TEST_CONFIG.database,
+    const { database } = await client.databases.createIfNotExists({
+      id: databaseName,
     })
 
     // Ensure container exists
@@ -135,10 +135,12 @@ async function setupTestContainer({
       partitionKey: { paths: [TEST_CONFIG.partitionKey] },
       throughput: TEST_CONFIG.throughput,
     })
+    
+    return database
   } catch (error) {
     const err = error as { code?: number; message?: string }
     throw new Error(
-      `Failed to setup container '${containerName}': ${err.message || String(error)}`,
+      `Failed to setup database '${databaseName}' and container '${containerName}': ${err.message || String(error)}`,
     )
   }
 }
@@ -195,26 +197,26 @@ async function queryAllDocuments({
 }
 
 /**
- * Cleanup test container by deleting it.
- * Handles 404 errors gracefully (container already deleted).
+ * Cleanup test database by deleting it.
+ * Handles 404 errors gracefully (database already deleted).
  *
  * @param options - Cleanup options
  */
-async function cleanupTestContainer({
-  database,
-  containerName,
+async function cleanupTestDatabase({
+  client,
+  databaseName,
 }: {
-  database: ReturnType<CosmosClient['database']>
-  containerName: string
+  client: CosmosClient
+  databaseName: string
 }): Promise<void> {
   try {
-    const container = database.container(containerName)
-    await container.delete()
+    const database = client.database(databaseName)
+    await database.delete()
   } catch (error) {
     const err = error as { code?: number }
-    // Ignore 404 (container doesn't exist)
+    // Ignore 404 (database doesn't exist)
     if (err.code !== 404) {
-      console.warn(`Warning: Failed to cleanup container '${containerName}':`, err)
+      console.warn(`Warning: Failed to cleanup database '${databaseName}':`, err)
     }
   }
 }
@@ -404,12 +406,14 @@ for (const result of testResults) {
 
 Deno.test('Schema Accuracy: Flat Primitives', async () => {
   const client = createClient()
-  const database = client.database(TEST_CONFIG.database)
-  const containerName = 'test_flat'
+  const databaseName = 'test_scenarios_flat'
+  const containerName = 'data'
+  
+  let database: ReturnType<CosmosClient['database']> | null = null
 
   try {
     // Setup
-    await setupTestContainer({ client, database, containerName })
+    database = await setupTestDatabase({ client, databaseName, containerName })
     const container = database.container(containerName)
 
     // Generate & seed
@@ -431,6 +435,9 @@ Deno.test('Schema Accuracy: Flat Primitives', async () => {
     const inferred = inferSchema({
       documents: queriedDocs,
       typeName: 'Product',
+      config: {
+        nestedNamingStrategy: 'flat',
+      },
     })
     assertExists(inferred, 'Schema should be inferred')
 
@@ -478,18 +485,26 @@ Deno.test('Schema Accuracy: Flat Primitives', async () => {
     )
   } finally {
     // Cleanup
-    await cleanupTestContainer({ database, containerName })
+    if (database) {
+      await cleanupTestDatabase({ client, databaseName })
+    }
+    // Dispose of the client to prevent resource leaks
+    if (client && typeof client.dispose === 'function') {
+      client.dispose()
+    }
   }
 })
 
 Deno.test('Schema Accuracy: Nested Objects', async () => {
   const client = createClient()
-  const database = client.database(TEST_CONFIG.database)
-  const containerName = 'test_nested'
+  const databaseName = 'test_scenarios_nested'
+  const containerName = 'data'
+  
+  let database: ReturnType<CosmosClient['database']> | null = null
 
   try {
     // Setup
-    await setupTestContainer({ client, database, containerName })
+    database = await setupTestDatabase({ client, databaseName, containerName })
     const container = database.container(containerName)
 
     // Generate & seed
@@ -511,6 +526,9 @@ Deno.test('Schema Accuracy: Nested Objects', async () => {
     const inferred = inferSchema({
       documents: queriedDocs,
       typeName: 'Order',
+      config: {
+        nestedNamingStrategy: 'flat',
+      },
     })
     assertExists(inferred, 'Schema should be inferred')
 
@@ -564,18 +582,26 @@ Deno.test('Schema Accuracy: Nested Objects', async () => {
     )
   } finally {
     // Cleanup
-    await cleanupTestContainer({ database, containerName })
+    if (database) {
+      await cleanupTestDatabase({ client, databaseName })
+    }
+    // Dispose of the client to prevent resource leaks
+    if (client && typeof client.dispose === 'function') {
+      client.dispose()
+    }
   }
 })
 
 Deno.test('Schema Accuracy: Polymorphic Arrays', async () => {
   const client = createClient()
-  const database = client.database(TEST_CONFIG.database)
-  const containerName = 'test_polymorphic'
+  const databaseName = 'test_scenarios_polymorphic'
+  const containerName = 'data'
+  
+  let database: ReturnType<CosmosClient['database']> | null = null
 
   try {
     // Setup
-    await setupTestContainer({ client, database, containerName })
+    database = await setupTestDatabase({ client, databaseName, containerName })
     const container = database.container(containerName)
 
     // Generate & seed
@@ -597,6 +623,9 @@ Deno.test('Schema Accuracy: Polymorphic Arrays', async () => {
     const inferred = inferSchema({
       documents: queriedDocs,
       typeName: 'Collection',
+      config: {
+        nestedNamingStrategy: 'flat',
+      },
     })
     assertExists(inferred, 'Schema should be inferred')
 
@@ -644,18 +673,26 @@ Deno.test('Schema Accuracy: Polymorphic Arrays', async () => {
     )
   } finally {
     // Cleanup
-    await cleanupTestContainer({ database, containerName })
+    if (database) {
+      await cleanupTestDatabase({ client, databaseName })
+    }
+    // Dispose of the client to prevent resource leaks
+    if (client && typeof client.dispose === 'function') {
+      client.dispose()
+    }
   }
 })
 
 Deno.test('Schema Accuracy: Sparse Fields', async () => {
   const client = createClient()
-  const database = client.database(TEST_CONFIG.database)
-  const containerName = 'test_sparse'
+  const databaseName = 'test_scenarios_sparse'
+  const containerName = 'data'
+  
+  let database: ReturnType<CosmosClient['database']> | null = null
 
   try {
     // Setup
-    await setupTestContainer({ client, database, containerName })
+    database = await setupTestDatabase({ client, databaseName, containerName })
     const container = database.container(containerName)
 
     // Generate & seed
@@ -677,6 +714,9 @@ Deno.test('Schema Accuracy: Sparse Fields', async () => {
     const inferred = inferSchema({
       documents: queriedDocs,
       typeName: 'Profile',
+      config: {
+        nestedNamingStrategy: 'flat',
+      },
     })
     assertExists(inferred, 'Schema should be inferred')
 
@@ -724,18 +764,26 @@ Deno.test('Schema Accuracy: Sparse Fields', async () => {
     )
   } finally {
     // Cleanup
-    await cleanupTestContainer({ database, containerName })
+    if (database) {
+      await cleanupTestDatabase({ client, databaseName })
+    }
+    // Dispose of the client to prevent resource leaks
+    if (client && typeof client.dispose === 'function') {
+      client.dispose()
+    }
   }
 })
 
 Deno.test('Schema Accuracy: Partition Patterns', async () => {
   const client = createClient()
-  const database = client.database(TEST_CONFIG.database)
-  const containerName = 'test_partitions'
+  const databaseName = 'test_scenarios_partitions'
+  const containerName = 'data'
+  
+  let database: ReturnType<CosmosClient['database']> | null = null
 
   try {
     // Setup
-    await setupTestContainer({ client, database, containerName })
+    database = await setupTestDatabase({ client, databaseName, containerName })
     const container = database.container(containerName)
 
     // Generate & seed
@@ -757,6 +805,9 @@ Deno.test('Schema Accuracy: Partition Patterns', async () => {
     const inferred = inferSchema({
       documents: queriedDocs,
       typeName: 'PartitionDocument',
+      config: {
+        nestedNamingStrategy: 'flat',
+      },
     })
     assertExists(inferred, 'Schema should be inferred')
 
@@ -807,6 +858,12 @@ Deno.test('Schema Accuracy: Partition Patterns', async () => {
     )
   } finally {
     // Cleanup
-    await cleanupTestContainer({ database, containerName })
+    if (database) {
+      await cleanupTestDatabase({ client, databaseName })
+    }
+    // Dispose of the client to prevent resource leaks
+    if (client && typeof client.dispose === 'function') {
+      client.dispose()
+    }
   }
 })
