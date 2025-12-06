@@ -6,20 +6,24 @@
 
 import { type Container, CosmosClient } from '@azure/cosmos'
 import { Agent as HttpsAgent } from 'node:https'
-import type { CosmosDBSubgraphConfig, ProgressCallback, Resolvers } from '../types/handler.ts'
+import type { CosmosDBSubgraphConfig, ProgressCallback, ResolverFn, Resolvers } from '../types/handler.ts'
 import type { InferredSchema } from '../types/infer.ts'
 import { parseConnectionString } from '../handler/connection-parser.ts'
 import { sampleDocuments } from '../handler/document-sampler.ts'
 import { inferSchema } from '../infer/infer-schema.ts'
 import { buildGraphQLSDL } from '../infer/sdl-generator.ts'
+import { generateCreateSDL } from '../infer/input-sdl-generator.ts'
 import { buildResolvers } from '../handler/resolver-builder.ts'
+import { buildCreateResolver } from '../handler/mutation-resolver-builder.ts'
+import { generateInputTypes } from '../handler/input-type-generator.ts'
+import { isOperationEnabled } from '../handler/operation-config-resolver.ts'
 import { createExecutableSchema } from '../handler/schema-executor.ts'
 import { ConfigurationError, createErrorContext } from '../errors/mod.ts'
 import { validateContainerConfig, validateRequiredString } from '../utils/validation.ts'
 import { SchemaCache } from '../cache/schemaCache.ts'
 
 /**
- * Container information
+ * Container information with configuration
  */
 type ContainerInfo = {
   /** CosmosDB container instance */
@@ -28,6 +32,10 @@ type ContainerInfo = {
   typeName: string
   /** Inferred schema for this container */
   schema: InferredSchema
+  /** Partition key path for this container */
+  partitionKeyPath: string
+  /** Operation configuration */
+  operationConfig?: CosmosDBSubgraphConfig['containers'][number]['operations']
 }
 
 /**
@@ -177,6 +185,7 @@ function resolveTypeName({
  *
  * Merges SDL fragments from multiple containers into a single unified schema.
  * Each container's types are included, and all queries are combined into a single Query type.
+ * If CREATE operations are enabled, also generates input types and Mutation type.
  *
  * @param params - SDL merging parameters
  * @returns Unified GraphQL SDL string
@@ -188,7 +197,9 @@ function buildMultiContainerSDL({
 }): string {
   const sdlFragments: string[] = []
   const queryFields: string[] = []
+  const mutationFields: string[] = []
   const connectionTypes: string[] = []
+  const inputSDLFragments: string[] = []
 
   for (const info of containerInfos) {
     // Generate SDL without Query type (we'll merge queries separately)
@@ -243,6 +254,25 @@ type ${connectionName} {
   """Whether more items are available"""
   hasMore: Boolean!
 }`)
+
+    // Generate CREATE input types and mutation if enabled
+    if (info.operationConfig && isOperationEnabled('create', info.operationConfig)) {
+      const createSDL = generateCreateSDL({
+        schema: info.schema,
+        typeName,
+        operationConfig: info.operationConfig,
+      })
+
+      if (createSDL) {
+        inputSDLFragments.push(createSDL)
+
+        mutationFields.push(`  """Create a new ${typeName}"""
+  create${typeName}(
+    """Input data for creating ${typeName}"""
+    input: Create${typeName}Input!
+  ): Create${typeName}Payload!`)
+      }
+    }
   }
 
   // Merge all SDL fragments
@@ -252,6 +282,13 @@ type ${connectionName} {
   const queryType = `type Query {
 ${queryFields.join('\n\n')}
 }`
+
+  // Create unified Mutation type if any mutations exist
+  const mutationType = mutationFields.length > 0
+    ? `\n\ntype Mutation {
+${mutationFields.join('\n\n')}
+}`
+    : ''
 
   // OrderDirection enum
   const orderDirectionEnum = `"""Sort direction for query results"""
@@ -263,34 +300,40 @@ enum OrderDirection {
   DESC
 }`
 
+  // Merge input SDL if any
+  const inputSDL = inputSDLFragments.length > 0 ? `\n\n${inputSDLFragments.join('\n\n')}` : ''
+
   // Combine all parts
-  return `${mergedTypes}\n\n${queryType}\n\n${orderDirectionEnum}\n\n${connectionTypes.join('\n\n')}`
+  return `${mergedTypes}\n\n${queryType}${mutationType}\n\n${orderDirectionEnum}\n\n${
+    connectionTypes.join('\n\n')
+  }${inputSDL}`
 }
 
 /**
  * Build multi-container resolvers
  *
  * Creates resolvers for all containers, routing queries to the appropriate container.
+ * If CREATE operations are enabled, also builds mutation resolvers.
  *
  * @param params - Resolver building parameters
  * @returns GraphQL resolvers object
  */
-function buildMultiContainerResolvers({
-  containerMap,
+async function buildMultiContainerResolvers({
+  containerInfos,
   retry,
 }: {
-  containerMap: Map<string, Container>
+  containerInfos: ContainerInfo[]
   retry?: CosmosDBSubgraphConfig['retry']
-}): Resolvers {
+}): Promise<Resolvers> {
   const resolvers: Resolvers = {
     Query: {},
   }
 
-  for (const [typeName, container] of containerMap.entries()) {
-    // Build resolvers for this container
+  for (const info of containerInfos) {
+    // Build Query resolvers for this container
     const containerResolvers = buildResolvers({
-      container,
-      typeName,
+      container: info.container,
+      typeName: info.typeName,
       retry,
     })
 
@@ -298,8 +341,32 @@ function buildMultiContainerResolvers({
     resolvers.Query = { ...resolvers.Query, ...containerResolvers.Query }
 
     // Add type-specific resolvers if any
-    if (containerResolvers[typeName]) {
-      resolvers[typeName] = containerResolvers[typeName]
+    if (containerResolvers[info.typeName]) {
+      resolvers[info.typeName] = containerResolvers[info.typeName]
+    }
+
+    // Build CREATE mutation resolver if enabled
+    if (info.operationConfig && isOperationEnabled('create', info.operationConfig)) {
+      const inputTypesResult = generateInputTypes({
+        schema: info.schema,
+        rootInputTypeName: `Create${info.typeName}Input`,
+      })
+
+      const createResolver = buildCreateResolver({
+        container: info.container,
+        typeName: info.typeName,
+        partitionKeyPath: info.partitionKeyPath,
+        operationConfig: info.operationConfig,
+        inputTypeDef: inputTypesResult.rootInputType,
+        retry,
+      })
+
+      if (createResolver) {
+        if (!resolvers.Mutation) {
+          resolvers.Mutation = {}
+        }
+        resolvers.Mutation[`create${info.typeName}`] = createResolver as ResolverFn
+      }
     }
   }
 
@@ -513,10 +580,16 @@ export async function buildCoreSchema(
         },
       })
 
+      // Get partition key path from container metadata
+      const metadata = await containerRef.read()
+      const partitionKeyPath = metadata.resource?.partitionKey?.paths[0] || '/id'
+
       return {
         container: containerRef,
         typeName,
         schema: inferredSchema,
+        partitionKeyPath,
+        operationConfig: containerConfig.operations,
       }
     }),
   )
@@ -555,9 +628,9 @@ export async function buildCoreSchema(
     containerNames.push(info.typeName)
   }
 
-  // Build unified resolvers
-  const resolvers = buildMultiContainerResolvers({
-    containerMap,
+  // Build unified resolvers (now async for CREATE support)
+  const resolvers = await buildMultiContainerResolvers({
+    containerInfos,
     retry: config.retry,
   })
 

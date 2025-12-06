@@ -464,3 +464,309 @@ export function validateContainerConfig({
     }
   }
 }
+
+/**
+ * Maximum document size in bytes (CosmosDB limit is 2MB)
+ */
+const MAX_DOCUMENT_SIZE_BYTES = 2 * 1024 * 1024
+
+/**
+ * Validate document size does not exceed CosmosDB limit
+ *
+ * CosmosDB has a 2MB document size limit. This function validates that
+ * the serialized document does not exceed this limit.
+ *
+ * @param document - Document to validate
+ * @param component - Component name for error context
+ * @throws {ValidationError} If document exceeds size limit
+ *
+ * @example
+ * ```ts
+ * validateDocumentSize({ name: 'test', data: {...} }, 'create-resolver')
+ * ```
+ */
+export function validateDocumentSize(
+  document: unknown,
+  component: string,
+): void {
+  const serialized = JSON.stringify(document)
+  const sizeBytes = new TextEncoder().encode(serialized).length
+
+  if (sizeBytes > MAX_DOCUMENT_SIZE_BYTES) {
+    throw new ValidationError(
+      `Document size (${sizeBytes} bytes) exceeds CosmosDB limit of ${MAX_DOCUMENT_SIZE_BYTES} bytes (2MB)`,
+      createErrorContext({
+        component,
+        metadata: {
+          documentSizeBytes: sizeBytes,
+          maxSizeBytes: MAX_DOCUMENT_SIZE_BYTES,
+          sizeMB: (sizeBytes / (1024 * 1024)).toFixed(2),
+        },
+      }),
+    )
+  }
+}
+
+/**
+ * Field schema definition for validation
+ */
+export type FieldSchema = {
+  /** Field name */
+  name: string
+  /** Field type (e.g., 'String', 'Int', 'Boolean', 'CustomType') */
+  type: string
+  /** Whether field is required */
+  required: boolean
+  /** Whether field is an array */
+  isArray: boolean
+  /** Nested schema for object types */
+  nestedSchema?: Record<string, FieldSchema>
+}
+
+/**
+ * Validate create input against schema
+ *
+ * Validates that input data matches the expected schema structure.
+ * Checks required fields, type compatibility, and nested structures.
+ *
+ * @param options - Validation options
+ * @throws {ValidationError} If input does not match schema
+ *
+ * @example
+ * ```ts
+ * validateCreateInput({
+ *   input: { name: 'John', age: 30 },
+ *   schema: { name: {...}, age: {...} },
+ *   typeName: 'User',
+ *   component: 'create-resolver'
+ * })
+ * ```
+ */
+export function validateCreateInput({
+  input,
+  schema,
+  typeName,
+  component,
+}: {
+  input: unknown
+  schema: Record<string, FieldSchema>
+  typeName: string
+  component: string
+}): void {
+  if (input === null || input === undefined) {
+    throw new ValidationError(
+      `Input for ${typeName} cannot be null or undefined`,
+      createErrorContext({
+        component,
+        metadata: { typeName },
+      }),
+    )
+  }
+
+  if (typeof input !== 'object' || Array.isArray(input)) {
+    throw new ValidationError(
+      `Input for ${typeName} must be an object`,
+      createErrorContext({
+        component,
+        metadata: {
+          typeName,
+          providedType: Array.isArray(input) ? 'array' : typeof input,
+        },
+      }),
+    )
+  }
+
+  const inputObj = input as Record<string, unknown>
+
+  for (const [fieldName, fieldSchema] of Object.entries(schema)) {
+    const fieldValue = inputObj[fieldName]
+
+    if (fieldSchema.required && (fieldValue === null || fieldValue === undefined)) {
+      throw new ValidationError(
+        `Required field "${fieldName}" is missing from ${typeName} input`,
+        createErrorContext({
+          component,
+          metadata: {
+            typeName,
+            fieldName,
+            required: true,
+          },
+        }),
+      )
+    }
+
+    if (fieldValue !== null && fieldValue !== undefined) {
+      if (fieldSchema.isArray) {
+        validateArrayField({
+          fieldName,
+          fieldValue,
+          fieldSchema,
+          typeName,
+          component,
+        })
+      } else if (fieldSchema.nestedSchema) {
+        validateNestedObject({
+          fieldName,
+          fieldValue,
+          nestedSchema: fieldSchema.nestedSchema,
+          parentTypeName: typeName,
+          component,
+        })
+      }
+    }
+  }
+}
+
+/**
+ * Validate array field elements
+ *
+ * Validates that array field contains elements of the expected type.
+ * Handles primitive arrays and arrays of nested objects.
+ *
+ * @param options - Validation options
+ * @throws {ValidationError} If array elements do not match expected type
+ *
+ * @example
+ * ```ts
+ * validateArrayField({
+ *   fieldName: 'tags',
+ *   fieldValue: ['tag1', 'tag2'],
+ *   fieldSchema: { type: 'String', isArray: true, ... },
+ *   typeName: 'Post',
+ *   component: 'create-resolver'
+ * })
+ * ```
+ */
+export function validateArrayField({
+  fieldName,
+  fieldValue,
+  fieldSchema,
+  typeName,
+  component,
+}: {
+  fieldName: string
+  fieldValue: unknown
+  fieldSchema: FieldSchema
+  typeName: string
+  component: string
+}): void {
+  if (!Array.isArray(fieldValue)) {
+    throw new ValidationError(
+      `Field "${fieldName}" in ${typeName} must be an array`,
+      createErrorContext({
+        component,
+        metadata: {
+          typeName,
+          fieldName,
+          providedType: typeof fieldValue,
+          expectedType: 'array',
+        },
+      }),
+    )
+  }
+
+  if (fieldSchema.nestedSchema) {
+    for (let i = 0; i < fieldValue.length; i++) {
+      const element = fieldValue[i]
+
+      if (element !== null && element !== undefined) {
+        validateNestedObject({
+          fieldName: `${fieldName}[${i}]`,
+          fieldValue: element,
+          nestedSchema: fieldSchema.nestedSchema,
+          parentTypeName: typeName,
+          component,
+        })
+      }
+    }
+  }
+}
+
+/**
+ * Validate nested object against schema
+ *
+ * Recursively validates nested object structure against expected schema.
+ * Handles deeply nested objects and validates all required fields.
+ *
+ * @param options - Validation options
+ * @throws {ValidationError} If nested object does not match schema
+ *
+ * @example
+ * ```ts
+ * validateNestedObject({
+ *   fieldName: 'address',
+ *   fieldValue: { street: '123 Main St', city: 'NYC' },
+ *   nestedSchema: { street: {...}, city: {...} },
+ *   parentTypeName: 'User',
+ *   component: 'create-resolver'
+ * })
+ * ```
+ */
+export function validateNestedObject({
+  fieldName,
+  fieldValue,
+  nestedSchema,
+  parentTypeName,
+  component,
+}: {
+  fieldName: string
+  fieldValue: unknown
+  nestedSchema: Record<string, FieldSchema>
+  parentTypeName: string
+  component: string
+}): void {
+  if (typeof fieldValue !== 'object' || fieldValue === null || Array.isArray(fieldValue)) {
+    throw new ValidationError(
+      `Field "${fieldName}" in ${parentTypeName} must be an object`,
+      createErrorContext({
+        component,
+        metadata: {
+          parentTypeName,
+          fieldName,
+          providedType: Array.isArray(fieldValue) ? 'array' : typeof fieldValue,
+          expectedType: 'object',
+        },
+      }),
+    )
+  }
+
+  const nestedObj = fieldValue as Record<string, unknown>
+
+  for (const [nestedFieldName, nestedFieldSchema] of Object.entries(nestedSchema)) {
+    const nestedFieldValue = nestedObj[nestedFieldName]
+
+    if (nestedFieldSchema.required && (nestedFieldValue === null || nestedFieldValue === undefined)) {
+      throw new ValidationError(
+        `Required field "${nestedFieldName}" is missing from ${parentTypeName}.${fieldName}`,
+        createErrorContext({
+          component,
+          metadata: {
+            parentTypeName,
+            fieldPath: `${fieldName}.${nestedFieldName}`,
+            required: true,
+          },
+        }),
+      )
+    }
+
+    if (nestedFieldValue !== null && nestedFieldValue !== undefined) {
+      if (nestedFieldSchema.isArray) {
+        validateArrayField({
+          fieldName: `${fieldName}.${nestedFieldName}`,
+          fieldValue: nestedFieldValue,
+          fieldSchema: nestedFieldSchema,
+          typeName: parentTypeName,
+          component,
+        })
+      } else if (nestedFieldSchema.nestedSchema) {
+        validateNestedObject({
+          fieldName: `${fieldName}.${nestedFieldName}`,
+          fieldValue: nestedFieldValue,
+          nestedSchema: nestedFieldSchema.nestedSchema,
+          parentTypeName,
+          component,
+        })
+      }
+    }
+  }
+}
