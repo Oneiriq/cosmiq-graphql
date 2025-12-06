@@ -28,6 +28,8 @@ export enum ErrorCode {
   MISSING_AUTH_METHOD = 'MISSING_AUTH_METHOD',
   /** General configuration error */
   CONFIGURATION_ERROR = 'CONFIGURATION_ERROR',
+  /** Configuration validation error */
+  CONFIG_VALIDATION = 'CONFIG_VALIDATION',
   /** Query execution failed */
   QUERY_FAILED = 'QUERY_FAILED',
   /** Validation error for input data */
@@ -251,6 +253,57 @@ export class ConfigurationError extends CosmosDBError {
       severity: 'medium',
       retryable: false,
     })
+  }
+}
+
+/**
+ * Configuration validation error
+ *
+ * Thrown when CRUD operation configuration is invalid,
+ * such as conflicting include/exclude lists or invalid operation names.
+ *
+ * @example
+ * ```ts
+ * throw new ConfigValidationError({
+ *   message: 'Invalid operation: "invalid"',
+ *   context,
+ *   field: 'operation',
+ *   operation: 'invalid'
+ * });
+ * ```
+ */
+export class ConfigValidationError extends CosmosDBError {
+  public readonly field?: string
+  public readonly operation?: string
+
+  constructor({
+    message,
+    context,
+    field,
+    operation,
+  }: {
+    message: string
+    context: CosmosDBErrorContext
+    field?: string
+    operation?: string
+  }) {
+    super({
+      message,
+      context,
+      code: ErrorCode.CONFIG_VALIDATION,
+      severity: 'high',
+      retryable: false,
+    })
+    this.field = field
+    this.operation = operation
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      field: this.field,
+      operation: this.operation,
+    }
   }
 }
 

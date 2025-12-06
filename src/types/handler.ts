@@ -195,6 +195,35 @@ export type ConfigValidationResult = {
 }
 
 /**
+ * CRUD operation types for customizable resolver generation
+ */
+export type CRUDOperation = 'create' | 'read' | 'update' | 'replace' | 'delete' | 'softDelete'
+
+/**
+ * Operation configuration for customizing which CRUD operations are generated
+ */
+export type OperationConfig = {
+  /** Operations to include (if specified, only these are generated) */
+  include?: CRUDOperation[]
+  /** Operations to exclude (if specified, these are not generated) */
+  exclude?: CRUDOperation[]
+  /** Rename operations (string for new name, null to hide) */
+  rename?: Partial<Record<CRUDOperation, string | null>>
+}
+
+/**
+ * Global CRUD configuration for the entire subgraph
+ */
+export type CRUDConfig = {
+  /** Default operations to generate if not specified at type level */
+  defaultOperations?: CRUDOperation[]
+  /** Global renames applied to all operations unless overridden */
+  globalRenames?: Partial<Record<CRUDOperation, string | null>>
+  /** Per-type operation configurations */
+  typeOperations?: Record<string, OperationConfig>
+}
+
+/**
  * Configuration for a single container
  *
  * Each container can have its own type name, sample size, and type system config.
@@ -220,6 +249,9 @@ export type ContainerConfig = {
 
   /** Type inference configuration for this container (optional, overrides global config) */
   typeSystem?: Partial<TypeSystemConfig>
+
+  /** CRUD operation configuration for this container */
+  operations?: OperationConfig
 }
 
 /**
@@ -261,6 +293,9 @@ export type CosmosDBSubgraphConfig = {
 
   /** Retry configuration for rate limiting and transient errors */
   retry?: RetryConfig
+
+  /** CRUD operation configuration for all containers */
+  crud?: CRUDConfig
 }
 
 /**

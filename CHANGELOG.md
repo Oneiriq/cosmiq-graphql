@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.6.1] - 2025-12-06
+
+### Added
+- Operation configuration system for customizing CRUD resolvers
+- `CRUDOperation`, `OperationConfig`, and `CRUDConfig` types
+- `operation-config-resolver.ts` with config resolution logic
+- `ConfigValidationError` for configuration validation
+
+### Changed
+- Extended `ContainerConfig` with `operations` field
+- Extended `CosmosDBSubgraphConfig` with `crud` field
+
+### Fixed
+- N/A
+
+**Files Changed:** 4 new/modified
+**Lines Added:** ~500 (production + tests)
+
 ## [0.6.0] - 2025-12-05
 
 ### Added
