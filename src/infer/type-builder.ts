@@ -100,6 +100,7 @@ export function createTypeDefinitions({
   const nestedTypeDefinitions = inferNestedTypes({
     fields: structure.fields,
     parentTypeName: typeName,
+    totalDocuments,
     config,
     currentDepth: 0,
   })
@@ -122,9 +123,11 @@ export function createTypeDefinitions({
       const field = createFieldDefinition({
         fieldName,
         fieldInfo,
-        totalDocuments,
+        totalDocuments: nestedTypeDef.parentFrequency,
+        containerTotalDocuments: totalDocuments,
         config,
         parentTypeName: resolvedName,
+        parentTypeDepth: nestedTypeDef.depth,
         registry,
         nestedTypeNameMap,
       })
@@ -145,8 +148,10 @@ export function createTypeDefinitions({
       fieldName,
       fieldInfo,
       totalDocuments,
+      containerTotalDocuments: totalDocuments,
       config,
       parentTypeName: typeName,
+      parentTypeDepth: 0,
       registry,
       nestedTypeNameMap,
     })
@@ -163,6 +168,61 @@ export function createTypeDefinitions({
     root: rootType,
     nested: nestedTypes,
   }
+}
+
+/**
+ * Check if nested object fields are stable enough to warrant a custom type
+ *
+ * Analyzes field frequency relative to total parent documents to determine
+ * if the structure is stable enough for a custom type or too polymorphic for JSON scalar.
+ *
+ * @param nestedFields - Map of nested field information
+ * @param totalDocuments - Total number of parent documents
+ * @param depth - Current nesting depth
+ * @returns True if fields are stable enough for custom type, false if too polymorphic
+ *
+ * @internal
+ */
+function isNestedObjectStable({
+  nestedFields,
+  totalDocuments,
+  depth = 0,
+}: {
+  nestedFields: Map<string, FieldInfo>
+  totalDocuments: number
+  depth?: number
+}): boolean {
+  if (nestedFields.size === 0) return false
+
+  if (depth >= 2 && nestedFields.size <= 3) {
+    return false
+  }
+
+  const fieldStabilityThreshold = 0.5
+  const polymorphicFieldThreshold = depth <= 1 ? 1.0 : 0.3
+
+  let sparseFieldCount = 0
+  let maxFieldFrequency = 0
+
+  for (const fieldInfo of nestedFields.values()) {
+    maxFieldFrequency = Math.max(maxFieldFrequency, fieldInfo.frequency)
+    const fieldFrequency = fieldInfo.frequency / totalDocuments
+    if (fieldFrequency < fieldStabilityThreshold) {
+      sparseFieldCount++
+    }
+  }
+
+  const sparseFieldRatio = sparseFieldCount / nestedFields.size
+
+  if (sparseFieldRatio > polymorphicFieldThreshold) {
+    return false
+  }
+
+  if (depth >= 2 && maxFieldFrequency < totalDocuments * 0.4) {
+    return false
+  }
+
+  return true
 }
 
 /**
@@ -198,16 +258,20 @@ function createFieldDefinition({
   fieldName,
   fieldInfo,
   totalDocuments,
+  containerTotalDocuments,
   config,
   parentTypeName,
+  parentTypeDepth = 0,
   registry,
   nestedTypeNameMap,
 }: {
   fieldName: string
   fieldInfo: FieldInfo
   totalDocuments: number
+  containerTotalDocuments?: number
   config?: Partial<TypeSystemConfig>
   parentTypeName: string
+  parentTypeDepth?: number
   registry?: TypeNameRegistry
   nestedTypeNameMap?: Map<string, string>
 }): GraphQLFieldDef {
@@ -223,19 +287,28 @@ function createFieldDefinition({
   let graphqlType = 'String' // default fallback
   let customTypeName: string | undefined
 
-  // Handle nested objects
+  // Handle nested objects - check polymorphism first
   if (fieldInfo.nestedFields && fieldInfo.nestedFields.size > 0) {
-    const baseName = generateTypeName({
-      parentType: parentTypeName,
-      fieldName,
-      config,
-      depth: 0, // Depth is handled during inferNestedTypes
+    const isStable = isNestedObjectStable({
+      nestedFields: fieldInfo.nestedFields,
+      totalDocuments: containerTotalDocuments ?? totalDocuments,
+      depth: parentTypeDepth,
     })
 
-    // Use pre-registered name from map if available, otherwise register
-    customTypeName = nestedTypeNameMap?.get(baseName) ??
-      (registry ? registry.register(baseName) : baseName)
-    graphqlType = customTypeName
+    if (isStable) {
+      const baseName = generateTypeName({
+        parentType: parentTypeName,
+        fieldName,
+        config,
+        depth: parentTypeDepth + 1,
+      })
+
+      customTypeName = nestedTypeNameMap?.get(baseName) ??
+        (registry ? registry.register(baseName) : baseName)
+      graphqlType = customTypeName
+    } else {
+      graphqlType = 'JSON'
+    }
   } else if (
     fieldInfo.types.size === 1 ||
     (fieldInfo.types.size === 2 && fieldInfo.types.has('null'))

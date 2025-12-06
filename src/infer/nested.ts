@@ -18,6 +18,8 @@ export type TypeDefinition = {
   parentType: string
   /** Nesting depth */
   depth: number
+  /** Parent field frequency (number of times parent appeared) */
+  parentFrequency: number
 }
 
 /**
@@ -87,13 +89,27 @@ export function generateTypeName({
   fieldName,
   config,
   depth = 0,
+  isArray = false,
 }: {
   parentType: string
   fieldName: string
   config?: Partial<TypeSystemConfig>
   depth?: number
+  isArray?: boolean
 }): string {
-  const capitalized = fieldName.charAt(0).toUpperCase() + fieldName.slice(1)
+  let fieldNameToUse = fieldName
+
+  // ONLY singularize array field names (not direct nested objects)
+  if (isArray && fieldName.endsWith('s') && fieldName.length > 2) {
+    const nonPluralPatterns = ['ss', 'ess', 'ness', 'ress', 'ous', 'us', 'is']
+    const shouldNotSingularize = nonPluralPatterns.some((pattern) => fieldName.endsWith(pattern))
+
+    if (!shouldNotSingularize) {
+      fieldNameToUse = fieldName.slice(0, -1)
+    }
+  }
+
+  const capitalized = fieldNameToUse.charAt(0).toUpperCase() + fieldNameToUse.slice(1)
 
   // Use custom template if provided
   if (config?.typeNameTemplate) {
@@ -108,9 +124,9 @@ export function generateTypeName({
       return `${parentType}${capitalized}`
 
     case 'flat':
-      // Skip parent prefix for simpler names, just use field name
-      // But prepend initials if depth > 1 to avoid collisions
-      if (depth > 1) {
+      // For array-derived types, use parent initials at deeper nesting
+      // For direct nested objects, never use prefixes
+      if (isArray && depth > 2) {
         const initials = toInitials(parentType)
         return `${initials}${capitalized}`
       }
@@ -131,7 +147,7 @@ export function generateTypeName({
       return `${parentType}${capitalized}`
 
     default:
-      return `${parentType}${capitalized}`
+      return capitalized
   }
 }
 
@@ -153,10 +169,57 @@ export type InferNestedTypesOptions = {
   fields: Map<string, FieldInfo>
   /** Parent type name */
   parentTypeName: string
+  /** Total number of documents in the container */
+  totalDocuments: number
   /** Optional type system configuration */
   config?: Partial<TypeSystemConfig>
   /** Current depth in the nesting hierarchy */
   currentDepth?: number
+}
+
+/**
+ * Check if nested object fields are stable enough to warrant a custom type
+ *
+ * @param nestedFields - Map of nested field information
+ * @param totalDocuments - Total number of parent documents
+ * @returns True if fields are stable, false if too polymorphic
+ */
+function isNestedObjectStable({
+  nestedFields,
+  totalDocuments,
+  depth = 0,
+}: {
+  nestedFields: Map<string, FieldInfo>
+  totalDocuments: number
+  depth?: number
+}): boolean {
+  if (nestedFields.size === 0) return false
+
+  const fieldStabilityThreshold = 0.5
+  const polymorphicFieldThreshold = depth <= 1 ? 1.0 : 0.3
+
+  let sparseFieldCount = 0
+  let maxFieldFrequency = 0
+
+  for (const fieldInfo of nestedFields.values()) {
+    maxFieldFrequency = Math.max(maxFieldFrequency, fieldInfo.frequency)
+    const fieldFrequency = fieldInfo.frequency / totalDocuments
+    if (fieldFrequency < fieldStabilityThreshold) {
+      sparseFieldCount++
+    }
+  }
+
+  const sparseFieldRatio = sparseFieldCount / nestedFields.size
+
+  if (sparseFieldRatio > polymorphicFieldThreshold) {
+    return false
+  }
+
+  if (depth >= 2 && maxFieldFrequency < totalDocuments * 0.4) {
+    return false
+  }
+
+  return true
 }
 
 /**
@@ -169,6 +232,7 @@ export type InferNestedTypesOptions = {
 export function inferNestedTypes({
   fields,
   parentTypeName,
+  totalDocuments: _totalDocuments,
   config,
   currentDepth = 0,
 }: InferNestedTypesOptions): TypeDefinition[] {
@@ -176,35 +240,81 @@ export function inferNestedTypes({
   const nestedTypes: TypeDefinition[] = []
 
   if (currentDepth >= maxDepth) {
-    return nestedTypes // Stop recursion at max depth
+    return nestedTypes
   }
 
   for (const [fieldName, fieldInfo] of fields.entries()) {
-    if (fieldInfo.nestedFields && fieldInfo.nestedFields.size > 0) {
+    if (fieldInfo.nestedFields && fieldInfo.nestedFields.size > 0 && !fieldInfo.isArray) {
+      const isStable = isNestedObjectStable({
+        nestedFields: fieldInfo.nestedFields,
+        totalDocuments: fieldInfo.frequency,
+        depth: currentDepth + 1,
+      })
+
+      if (!isStable) {
+        continue
+      }
+
       const nestedTypeName = generateTypeName({
         parentType: parentTypeName,
         fieldName,
         config,
         depth: currentDepth + 1,
+        isArray: false,
       })
 
-      // Recursively infer nested types
       const deeperNestedTypes = inferNestedTypes({
         fields: fieldInfo.nestedFields,
         parentTypeName: nestedTypeName,
+        totalDocuments: fieldInfo.frequency,
         config,
         currentDepth: currentDepth + 1,
       })
 
       nestedTypes.push(...deeperNestedTypes)
 
-      // Add current nested type
       nestedTypes.push({
         name: nestedTypeName,
         fields: fieldInfo.nestedFields,
         parentType: parentTypeName,
         depth: currentDepth + 1,
+        parentFrequency: fieldInfo.frequency,
       })
+    }
+
+    if (fieldInfo.isArray && fieldInfo.arrayElementTypes) {
+      if (fieldInfo.arrayElementTypes.has('object') && fieldInfo.nestedFields && fieldInfo.nestedFields.size > 0) {
+        let arrayElementCount = 0
+        for (const nestedFieldInfo of fieldInfo.nestedFields.values()) {
+          arrayElementCount = Math.max(arrayElementCount, nestedFieldInfo.frequency)
+        }
+
+        const nestedTypeName = generateTypeName({
+          parentType: parentTypeName,
+          fieldName,
+          config,
+          depth: currentDepth + 1,
+          isArray: true,
+        })
+
+        const deeperNestedTypes = inferNestedTypes({
+          fields: fieldInfo.nestedFields,
+          parentTypeName: nestedTypeName,
+          totalDocuments: arrayElementCount,
+          config,
+          currentDepth: currentDepth + 1,
+        })
+
+        nestedTypes.push(...deeperNestedTypes)
+
+        nestedTypes.push({
+          name: nestedTypeName,
+          fields: fieldInfo.nestedFields,
+          parentType: parentTypeName,
+          depth: currentDepth + 1,
+          parentFrequency: arrayElementCount,
+        })
+      }
     }
   }
 

@@ -70,6 +70,16 @@ export function inferJSONStructure(
     analyzeDocument(doc, fields, documents.length)
   }
 
+  for (const [, fieldInfo] of fields.entries()) {
+    if (fieldInfo.nestedFields && fieldInfo.isArray) {
+      for (const [, nestedFieldInfo] of fieldInfo.nestedFields.entries()) {
+        if (nestedFieldInfo.frequency < fieldInfo.frequency) {
+          nestedFieldInfo.isNullable = true
+        }
+      }
+    }
+  }
+
   // Detect conflicts (fields with multiple types)
   for (const [fieldName, fieldInfo] of fields.entries()) {
     if (fieldInfo.types.size > 1 && !fieldInfo.types.has('null')) {
@@ -163,8 +173,28 @@ function recordField({
     if (Array.isArray(value) && value.length > 0) {
       existing.isArray = true
       existing.arrayElementTypes = existing.arrayElementTypes || new Set()
+      let objectElementCount = 0
       for (const elem of value) {
         existing.arrayElementTypes.add(detectType(elem))
+        if (typeof elem === 'object' && elem !== null && !Array.isArray(elem)) {
+          objectElementCount++
+        }
+      }
+
+      if (objectElementCount > 0) {
+        if (!existing.totalPolymorphicObjects) {
+          existing.totalPolymorphicObjects = 0
+        }
+        existing.totalPolymorphicObjects += objectElementCount
+      }
+
+      for (const elem of value) {
+        if (isNestedObject(elem)) {
+          if (!existing.nestedFields) {
+            existing.nestedFields = new Map()
+          }
+          mergeNestedFields(existing.nestedFields, elem as Record<string, unknown>, totalDocs, undefined, true)
+        }
       }
     }
 
@@ -191,8 +221,31 @@ function recordField({
 
     if (Array.isArray(value) && value.length > 0) {
       fieldInfo.arrayElementTypes = new Set()
+      let objectElementCount = 0
       for (const elem of value) {
         fieldInfo.arrayElementTypes.add(detectType(elem))
+        if (typeof elem === 'object' && elem !== null && !Array.isArray(elem)) {
+          objectElementCount++
+        }
+      }
+
+      if (objectElementCount > 0) {
+        fieldInfo.totalPolymorphicObjects = objectElementCount
+      }
+
+      for (const elem of value) {
+        if (isNestedObject(elem)) {
+          if (!fieldInfo.nestedFields) {
+            fieldInfo.nestedFields = new Map()
+          }
+          mergeNestedFields(
+            fieldInfo.nestedFields,
+            elem as Record<string, unknown>,
+            totalDocs,
+            undefined,
+            true,
+          )
+        }
       }
     }
 
@@ -203,6 +256,131 @@ function recordField({
     }
 
     fields.set(key, fieldInfo)
+  }
+}
+
+/**
+ * Merge nested fields from a source object into a target map
+ *
+ * This ensures we capture all fields from different variants in polymorphic structures.
+ * When processing array elements, frequency counting can be controlled to track document-level
+ * occurrences rather than element-level occurrences.
+ *
+ * @param target - Target map to merge fields into
+ * @param source - Source object to extract fields from
+ * @param totalDocs - Total number of documents being analyzed
+ * @param seenFields - Optional set to track which fields were seen (for deduplication in arrays)
+ * @param incrementFrequency - Whether to increment frequency for existing fields (default: true)
+ *
+ * @internal
+ */
+function mergeNestedFields(
+  target: Map<string, FieldInfo>,
+  source: Record<string, unknown>,
+  totalDocs: number,
+  seenFields?: Set<string>,
+  incrementFrequency = true,
+): void {
+  for (const [key, value] of Object.entries(source)) {
+    const valueType = detectType(value)
+    const existing = target.get(key)
+
+    if (seenFields) {
+      seenFields.add(key)
+    }
+
+    if (existing) {
+      existing.types.add(valueType)
+      if (incrementFrequency) {
+        existing.frequency++
+      }
+
+      // Collect number values for inference
+      if (typeof value === 'number' && !Number.isNaN(value)) {
+        existing.numberValues = existing.numberValues || []
+        existing.numberValues.push(value)
+      }
+
+      // Handle arrays in nested objects
+      if (Array.isArray(value)) {
+        existing.isArray = true
+        existing.arrayElementTypes = existing.arrayElementTypes || new Set()
+        let objectElementCount = 0
+        for (const elem of value) {
+          existing.arrayElementTypes.add(detectType(elem))
+          if (typeof elem === 'object' && elem !== null && !Array.isArray(elem)) {
+            objectElementCount++
+          }
+        }
+
+        for (const elem of value) {
+          if (isNestedObject(elem)) {
+            if (!existing.nestedFields) {
+              existing.nestedFields = new Map()
+            }
+            mergeNestedFields(
+              existing.nestedFields,
+              elem as Record<string, unknown>,
+              objectElementCount,
+              undefined,
+              true,
+            )
+          }
+        }
+      }
+    } else {
+      // Create new field info
+      const fieldInfo: FieldInfo = {
+        name: key,
+        types: new Set([valueType]),
+        frequency: 1,
+        isArray: Array.isArray(value),
+      }
+
+      // Collect number values for inference
+      if (typeof value === 'number' && !Number.isNaN(value)) {
+        fieldInfo.numberValues = [value]
+      }
+
+      // Handle arrays in nested objects
+      if (Array.isArray(value) && value.length > 0) {
+        fieldInfo.arrayElementTypes = new Set()
+        let objectElementCount = 0
+        for (const elem of value) {
+          fieldInfo.arrayElementTypes.add(detectType(elem))
+          if (typeof elem === 'object' && elem !== null && !Array.isArray(elem)) {
+            objectElementCount++
+          }
+        }
+
+        for (const elem of value) {
+          // Handle nested objects in arrays for polymorphic type detection
+          if (isNestedObject(elem)) {
+            if (!fieldInfo.nestedFields) {
+              fieldInfo.nestedFields = new Map()
+            }
+            mergeNestedFields(
+              fieldInfo.nestedFields,
+              elem as Record<string, unknown>,
+              objectElementCount,
+              undefined,
+              true,
+            )
+          }
+        }
+      }
+
+      target.set(key, fieldInfo)
+    }
+
+    // Handle nested objects recursively
+    if (isNestedObject(value)) {
+      const fieldInfo = target.get(key)!
+      if (!fieldInfo.nestedFields) {
+        fieldInfo.nestedFields = new Map()
+      }
+      mergeNestedFields(fieldInfo.nestedFields, value as Record<string, unknown>, totalDocs, undefined)
+    }
   }
 }
 
@@ -313,6 +491,11 @@ export function determineNullability({
   totalDocuments: number
   config?: Partial<TypeSystemConfig>
 }): 'required' | 'optional' {
+  // If field is explicitly marked as nullable (e.g., from polymorphic arrays), it's optional
+  if (fieldInfo.isNullable) {
+    return 'optional'
+  }
+
   const threshold = config?.requiredThreshold ?? 95
   const frequency = calculateFrequency({
     fieldFrequency: fieldInfo.frequency,
