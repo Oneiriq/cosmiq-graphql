@@ -1,0 +1,324 @@
+/**
+ * Mutation Resolver Builder Module
+ * Builds GraphQL mutation resolvers for CosmosDB CREATE operations
+ * @module
+ */
+
+import type { Container } from '@azure/cosmos'
+import type { CreatePayload, InputTypeDefinition, OperationConfig, RetryConfig } from '../types/handler.ts'
+import { isOperationEnabled } from './operation-config-resolver.ts'
+import { type FieldSchema, validateCreateInput, validateDocumentSize } from '../utils/validation.ts'
+import { ConflictError, createErrorContext, ValidationError } from '../errors/mod.ts'
+import { withRetry } from '../utils/retryWrapper.ts'
+
+/**
+ * Parameters for building a CREATE mutation resolver
+ */
+export type BuildCreateResolverParams = {
+  /** CosmosDB container instance */
+  container: Container
+  /** GraphQL type name */
+  typeName: string
+  /** Container's partition key path (e.g., '/pk', '/userId') */
+  partitionKeyPath: string
+  /** Operation configuration for filtering enabled operations */
+  operationConfig?: OperationConfig
+  /** Input type definition for validation */
+  inputTypeDef: InputTypeDefinition
+  /** Retry configuration for rate limiting and transient errors */
+  retry?: RetryConfig
+}
+
+/**
+ * Build CREATE mutation resolver for CosmosDB container
+ *
+ * Creates a GraphQL mutation resolver that:
+ * - Validates input against schema
+ * - Generates UUID v4 for document ID
+ * - Extracts/validates partition key
+ * - Injects system fields (_createdAt, _updatedAt)
+ * - Creates document in CosmosDB
+ * - Returns CreatePayload with data, etag, and requestCharge
+ *
+ * Returns null if CREATE operation is disabled in operation config.
+ *
+ * @param params - Resolver building parameters
+ * @returns Mutation resolver function or null if operation disabled
+ *
+ * @example
+ * ```ts
+ * const createResolver = buildCreateResolver({
+ *   container: cosmosContainer,
+ *   typeName: 'User',
+ *   partitionKeyPath: '/pk',
+ *   inputTypeDef: userInputType,
+ *   operationConfig: { include: ['create', 'read'] }
+ * });
+ * ```
+ */
+export function buildCreateResolver({
+  container,
+  typeName,
+  partitionKeyPath,
+  operationConfig,
+  inputTypeDef,
+  retry,
+}: BuildCreateResolverParams):
+  | ((_parent: unknown, args: { input: unknown }) => Promise<
+    CreatePayload<unknown>
+  >)
+  | null {
+  if (operationConfig && !isOperationEnabled('create', operationConfig)) {
+    return null
+  }
+
+  const partitionKeyField = partitionKeyPath.replace(/^\//, '')
+  const fieldSchema = convertInputTypeToFieldSchema(inputTypeDef)
+
+  return async (_parent: unknown, args: { input: unknown }) => {
+    const input = args.input
+
+    if (input === null || input === undefined || typeof input !== 'object' || Array.isArray(input)) {
+      throw new ValidationError(
+        `Input for ${typeName} must be a non-null object`,
+        createErrorContext({
+          component: 'mutation-resolver-builder',
+          metadata: {
+            typeName,
+            providedType: input === null ? 'null' : Array.isArray(input) ? 'array' : typeof input,
+          },
+        }),
+      )
+    }
+
+    return await withRetry(
+      async () => {
+        const inputObj = input as Record<string, unknown>
+
+        validateDocumentSize(inputObj, 'mutation-resolver-builder')
+
+        validateCreateInput({
+          input: inputObj,
+          schema: fieldSchema,
+          typeName,
+          component: 'mutation-resolver-builder',
+        })
+
+        const id = crypto.randomUUID()
+
+        const partitionKeyValue = extractPartitionKeyValue({
+          input: inputObj,
+          partitionKeyField,
+          typeName,
+        })
+
+        const now = new Date().toISOString()
+
+        const document: Record<string, unknown> = {
+          ...inputObj,
+          id,
+          [partitionKeyField]: partitionKeyValue,
+          _createdAt: now,
+          _updatedAt: now,
+        }
+
+        try {
+          const response = await container.items.create(document)
+
+          const result: CreatePayload<unknown> = {
+            data: response.resource,
+            etag: response.etag || '',
+            requestCharge: response.requestCharge || 0,
+          }
+
+          return result
+        } catch (error) {
+          if (error && typeof error === 'object' && 'code' in error && error.code === 409) {
+            throw new ConflictError({
+              message: `Document with id "${id}" already exists`,
+              context: createErrorContext({
+                component: 'mutation-resolver-builder',
+                metadata: {
+                  typeName,
+                  documentId: id,
+                  partitionKey: partitionKeyValue,
+                },
+              }),
+              metadata: {
+                statusCode: 409,
+              },
+            })
+          }
+
+          throw error
+        }
+      },
+      {
+        config: {
+          ...retry,
+          shouldRetry: (error, attempt) => {
+            if (error && typeof error === 'object' && 'code' in error && error.code === 409) {
+              return false
+            }
+
+            if (error instanceof ValidationError || error instanceof ConflictError) {
+              return false
+            }
+
+            if (retry?.shouldRetry) {
+              return retry.shouldRetry(error, attempt)
+            }
+
+            return undefined as unknown as boolean
+          },
+        },
+        component: 'mutation-resolver-builder',
+        operation: 'create-mutation',
+      },
+    )
+  }
+}
+
+/**
+ * Convert InputTypeDefinition to field schema for validation
+ *
+ * Transforms GraphQL input type definition into the format required
+ * by validation functions. Handles type parsing and nested schemas.
+ *
+ * @param inputTypeDef - Input type definition from schema inference
+ * @returns Record mapping field names to field schemas
+ *
+ * @example
+ * ```ts
+ * const schema = convertInputTypeToFieldSchema({
+ *   name: 'CreateUserInput',
+ *   fields: [
+ *     { name: 'name', type: 'String!', required: true, isArray: false },
+ *     { name: 'age', type: 'Int', required: false, isArray: false }
+ *   ]
+ * });
+ * // Returns: {
+ * //   name: { name: 'name', type: 'String', required: true, isArray: false },
+ * //   age: { name: 'age', type: 'Int', required: false, isArray: false }
+ * // }
+ * ```
+ *
+ * @internal
+ */
+function convertInputTypeToFieldSchema(
+  inputTypeDef: InputTypeDefinition,
+): Record<string, FieldSchema> {
+  const schema: Record<string, FieldSchema> = {}
+
+  for (const field of inputTypeDef.fields) {
+    const baseType = extractBaseType(field.type)
+
+    schema[field.name] = {
+      name: field.name,
+      type: baseType,
+      required: field.required,
+      isArray: field.isArray,
+    }
+  }
+
+  return schema
+}
+
+/**
+ * Extract base type from GraphQL type string
+ *
+ * Removes GraphQL type modifiers (!, []) to get the underlying type name.
+ *
+ * @param typeString - GraphQL type string (e.g., 'String!', '[Int]!', 'CustomType')
+ * @returns Base type name without modifiers
+ *
+ * @example
+ * ```ts
+ * extractBaseType('String!') // 'String'
+ * extractBaseType('[Int]!') // 'Int'
+ * extractBaseType('CustomType') // 'CustomType'
+ * ```
+ *
+ * @internal
+ */
+function extractBaseType(typeString: string): string {
+  return typeString.replace(/[!\[\]]/g, '')
+}
+
+/**
+ * Extract partition key value from input
+ *
+ * Retrieves the partition key value from the input object using the
+ * partition key field name. Validates that the partition key is present
+ * and is a valid string value.
+ *
+ * @param params - Extraction parameters
+ * @returns Partition key value as string
+ * @throws {ValidationError} If partition key is missing or invalid
+ *
+ * @example
+ * ```ts
+ * const pkValue = extractPartitionKeyValue({
+ *   input: { pk: 'user-123', name: 'John' },
+ *   partitionKeyField: 'pk',
+ *   typeName: 'User'
+ * });
+ * // Returns: 'user-123'
+ * ```
+ *
+ * @internal
+ */
+function extractPartitionKeyValue({
+  input,
+  partitionKeyField,
+  typeName,
+}: {
+  input: Record<string, unknown>
+  partitionKeyField: string
+  typeName: string
+}): string {
+  const pkValue = input[partitionKeyField]
+
+  if (pkValue === null || pkValue === undefined) {
+    throw new ValidationError(
+      `Partition key field "${partitionKeyField}" is required for ${typeName}`,
+      createErrorContext({
+        component: 'mutation-resolver-builder',
+        metadata: {
+          typeName,
+          partitionKeyField,
+          providedFields: Object.keys(input),
+        },
+      }),
+    )
+  }
+
+  if (typeof pkValue !== 'string') {
+    throw new ValidationError(
+      `Partition key field "${partitionKeyField}" must be a string for ${typeName}`,
+      createErrorContext({
+        component: 'mutation-resolver-builder',
+        metadata: {
+          typeName,
+          partitionKeyField,
+          providedType: typeof pkValue,
+        },
+      }),
+    )
+  }
+
+  if (pkValue.trim() === '') {
+    throw new ValidationError(
+      `Partition key field "${partitionKeyField}" cannot be empty for ${typeName}`,
+      createErrorContext({
+        component: 'mutation-resolver-builder',
+        metadata: {
+          typeName,
+          partitionKeyField,
+        },
+      }),
+    )
+  }
+
+  return pkValue
+}

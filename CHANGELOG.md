@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.6.3] - 2025-12-06
+
+### Added
+- CREATE mutation operations
+- Input type generator (`input-type-generator.ts`)
+- Input SDL generator (`input-sdl-generator.ts`)
+- Mutation resolver builder (`mutation-resolver-builder.ts`)
+- Create payload types and validation
+- UUID v4 ID generation
+- Document size validation (2MB limit)
+
+### Changed
+- Extended `validation.ts` with create-specific validation
+- Schema builder now generates both Query and Mutation resolvers
+- Types extended with `CreatePayload`, `InputFieldDefinition`, `InputTypeDefinition`
+- `src/adapters/core.ts` - Integrated CREATE functionality
+
+### Fixed
+- N/A
+
+**Files Changed:** 6 new + 3 modified
+**Lines Added:** ~1,200 (production + tests)
+
 ## [v0.6.2] - 2025-12-06
 
 ### Added
