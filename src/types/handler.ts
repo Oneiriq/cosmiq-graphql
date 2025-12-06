@@ -465,3 +465,31 @@ export type RetryContext = {
   /** Delay applied before each retry (in milliseconds) */
   delayMs: number[]
 }
+
+/**
+ * Query result wrapper with ETag for optimistic concurrency
+ */
+export type QueryResult<T> = {
+  /** The queried data */
+  data: T | null
+  /** ETag for optimistic concurrency control */
+  etag: string
+}
+
+/**
+ * WHERE clause operators for filtering
+ */
+export type WhereOperator = 'eq' | 'ne' | 'gt' | 'lt' | 'contains'
+
+/**
+ * WHERE filter for list queries
+ *
+ * @example
+ * ```ts
+ * const where: WhereFilter = {
+ *   name: { eq: 'test.txt' },
+ *   size: { gt: 1000 }
+ * }
+ * ```
+ */
+export type WhereFilter = Record<string, Partial<Record<WhereOperator, unknown>>>

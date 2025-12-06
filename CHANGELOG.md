@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.6.2] - 2025-12-06
+
+### Added
+- ETag support for conditional requests
+- `QueryResult<T>` wrapper type with data and etag fields
+- WHERE filtering with 5 operators (eq, ne, gt, lt, contains)
+- `TypeNameWhereInput` and `TypeNameResult` SDL generation
+- `ConditionalCheckFailedError` for ETag mismatch scenarios
+- `InvalidFilterError` for invalid WHERE clauses
+- `ifNoneMatch` parameter for 304 Not Modified equivalent responses
+- Parameterized queries for SQL injection prevention
+
+### Changed
+- Single-item resolvers now return `{ data, etag }` format
+- SDL generator produces WhereInput and Result wrapper types
+- Query resolvers accept `where` parameter for filtering
+- Updated test coverage to include ETag and WHERE functionality
+
+### Fixed
+- N/A
+
 ## [v0.6.1] - 2025-12-06
 
 ### Added
@@ -21,9 +42,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - N/A
-
-**Files Changed:** 4 new/modified
-**Lines Added:** ~500 (production + tests)
 
 ## [0.6.0] - 2025-12-05
 

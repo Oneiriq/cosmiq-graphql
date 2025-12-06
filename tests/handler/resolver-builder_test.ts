@@ -7,7 +7,7 @@ import { describe, it } from '@std/testing/bdd'
 import { buildResolvers } from '../../src/handler/resolver-builder.ts'
 import type { Container, FeedResponse } from '@azure/cosmos'
 import type { InferredSchema } from '../../src/types/infer.ts'
-import type { ConnectionResult } from '../../src/types/handler.ts'
+import type { ConnectionResult, QueryResult } from '../../src/types/handler.ts'
 
 /**
  * Mock Container implementation for testing
@@ -31,7 +31,7 @@ function createMockContainer({
         if (itemReadError) {
           throw itemReadError
         }
-        return { resource: itemReadResult }
+        return { resource: itemReadResult, etag: 'test-etag' }
       },
     }),
     items: {
@@ -142,8 +142,9 @@ describe('buildResolvers', () => {
         typeName: 'File',
       })
 
-      const result = await resolvers.Query.file(null, { id: '123' }, null)
-      assertEquals(result, testItem)
+      const result = await resolvers.Query.file(null, { id: '123' }, null) as QueryResult<unknown>
+      assertEquals(result.data, testItem)
+      assertEquals(result.etag, 'test-etag')
     })
 
     it('should return null for 404 errors', async () => {
@@ -156,8 +157,9 @@ describe('buildResolvers', () => {
         typeName: 'File',
       })
 
-      const result = await resolvers.Query.file(null, { id: '999' }, null)
-      assertEquals(result, null)
+      const result = await resolvers.Query.file(null, { id: '999' }, null) as QueryResult<unknown>
+      assertEquals(result.data, null)
+      assertEquals(result.etag, '')
     })
 
     it('should re-throw non-404 errors', async () => {
@@ -371,8 +373,9 @@ describe('buildResolvers', () => {
 
       await resolvers.Query.files(null, {}, null)
 
-      assertEquals(typeof capturedQuery, 'string')
-      assertEquals(capturedQuery, 'SELECT * FROM c')
+      assertEquals(typeof capturedQuery, 'object')
+      const queryObj = capturedQuery as unknown as { query: string; parameters?: unknown[] }
+      assertEquals(queryObj.query, 'SELECT * FROM c')
     })
   })
 
@@ -796,8 +799,8 @@ describe('Resolver Builder - Retry Logic', () => {
       retry: { maxRetries: 3, baseDelayMs: 5 },
     })
 
-    const result = await resolvers.Query.file(null, { id: '1' }, null)
-    assertEquals((result as { id: string }).id, '1')
+    const result = await resolvers.Query.file(null, { id: '1' }, null) as QueryResult<unknown>
+    assertEquals((result.data as { id: string }).id, '1')
     assertEquals(readCallCount, 2)
   })
 
@@ -819,8 +822,8 @@ describe('Resolver Builder - Retry Logic', () => {
       retry: { maxRetries: 3 },
     })
 
-    const result = await resolvers.Query.file(null, { id: '1' }, null)
-    assertEquals(result, null)
+    const result = await resolvers.Query.file(null, { id: '1' }, null) as QueryResult<unknown>
+    assertEquals(result.data, null)
     assertEquals(readCallCount, 1)
   })
 
@@ -981,8 +984,8 @@ describe('Resolver Builder - Retry Logic', () => {
       typeName: 'File',
     })
 
-    const result = await resolvers.Query.file(null, { id: '1' }, null)
-    assertEquals((result as { id: string }).id, '1')
+    const result = await resolvers.Query.file(null, { id: '1' }, null) as QueryResult<unknown>
+    assertEquals((result.data as { id: string }).id, '1')
     assertEquals(readCallCount >= 2, true)
   })
 

@@ -504,7 +504,7 @@ describe('buildGraphQLSDL', () => {
 
       const sdl = buildGraphQLSDL({ schema })
 
-      assertStringIncludes(sdl, '"""Get a single User by ID"""')
+      assertStringIncludes(sdl, '"""Get a single User by ID with ETag support"""')
       assertStringIncludes(sdl, '"""List Users with pagination, filtering, and sorting"""')
       assertStringIncludes(sdl, '"""Maximum number of results (default: 100)"""')
     })

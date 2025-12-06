@@ -71,6 +71,8 @@ export function buildGraphQLSDL({
   // Add Query type if requested
   if (includeQueries) {
     parts.push(buildOrderDirectionEnum())
+    parts.push(buildWhereInputType(schema.rootType))
+    parts.push(buildResultType(schema.rootType))
     parts.push(buildConnectionType(schema.rootType))
     parts.push(buildQueryType(schema.rootType))
   }
@@ -186,6 +188,100 @@ enum OrderDirection {
 }
 
 /**
+ * Build WHERE input type for filtering
+ *
+ * Generates a WHERE input type with supported operators for each field type.
+ * This allows clients to filter query results using equality, comparison, and pattern matching.
+ *
+ * @param rootType - Root GraphQL type definition (e.g., File)
+ * @returns Formatted WHERE input type SDL string (e.g., FileWhereInput)
+ *
+ * @example
+ * ```ts
+ * const whereInputSDL = buildWhereInputType({ name: 'File', fields: [...] })
+ * // Returns:
+ * // """Filter conditions for File queries"""
+ * // input FileWhereInput {
+ * //   """Field name with operators"""
+ * //   name: FileWhereOperators
+ * //   size: FileWhereOperators
+ * // }
+ * // input FileWhereOperators {
+ * //   eq: String
+ * //   ne: String
+ * //   gt: String
+ * //   lt: String
+ * //   contains: String
+ * // }
+ * ```
+ *
+ * @internal
+ */
+function buildWhereInputType(rootType: GraphQLTypeDef): string {
+  const typeName = rootType.name
+
+  return `"""WHERE operators for filtering"""
+input ${typeName}WhereOperators {
+  """Equals"""
+  eq: String
+  
+  """Not equals"""
+  ne: String
+  
+  """Greater than"""
+  gt: String
+  
+  """Less than"""
+  lt: String
+  
+  """Contains (case-sensitive substring match)"""
+  contains: String
+}
+
+"""Filter input for ${typeName} queries"""
+input ${typeName}WhereInput {
+  """Filter conditions by field name"""
+  [fieldName: String]: ${typeName}WhereOperators
+}`
+}
+
+/**
+ * Build result wrapper type with ETag
+ *
+ * Generates a result type that wraps the data with an ETag for optimistic concurrency control.
+ *
+ * @param rootType - Root GraphQL type definition (e.g., File)
+ * @returns Formatted result type SDL string (e.g., FileResult)
+ *
+ * @example
+ * ```ts
+ * const resultSDL = buildResultType({ name: 'File', fields: [...] })
+ * // Returns:
+ * // """Result wrapper with ETag for File"""
+ * // type FileResult {
+ * //   """The queried data"""
+ * //   data: File
+ * //   """ETag for optimistic concurrency"""
+ * //   etag: String!
+ * // }
+ * ```
+ *
+ * @internal
+ */
+function buildResultType(rootType: GraphQLTypeDef): string {
+  const typeName = rootType.name
+
+  return `"""Result wrapper with ETag for ${typeName}"""
+type ${typeName}Result {
+  """The queried data"""
+  data: ${typeName}
+  
+  """ETag for optimistic concurrency control"""
+  etag: String!
+}`
+}
+
+/**
  * Build connection type for paginated results
  *
  * Generates a Connection type following the Relay-inspired pagination pattern
@@ -235,11 +331,11 @@ type ${connectionName} {
  * Build Query type with enhanced queries for the root type
  *
  * Generates a comprehensive Query type with two GraphQL queries:
- * 1. Single-item query: `{typeName}(id: ID!, partitionKey: String)` - Fetch by ID with optional partition key
+ * 1. Single-item query: `{typeName}(id: ID!, partitionKey: String, ifNoneMatch: String)` - Fetch by ID with ETag support
  * 2. List query: `{typeName}s(...)` - Paginated list with filtering, sorting, and continuation tokens
  *
- * The list query returns a Connection type instead of a simple array to provide
- * pagination metadata.
+ * The single-item query returns a Result type with data and ETag.
+ * The list query returns a Connection type for pagination metadata.
  *
  * @param rootType - Root GraphQL type definition (determines query names and types)
  * @returns Formatted Query type SDL string with full documentation comments
@@ -249,8 +345,8 @@ type ${connectionName} {
  * const querySDL = buildQueryType({ name: 'File', fields: [...] })
  * // Returns:
  * // type Query {
- * //   file(id: ID!, partitionKey: String): File
- * //   files(limit: Int = 100, ...): FilesConnection!
+ * //   file(id: ID!, partitionKey: String, ifNoneMatch: String): FileResult
+ * //   files(limit: Int = 100, where: FileWhereInput, ...): FilesConnection!
  * // }
  * ```
  *
@@ -263,14 +359,17 @@ function buildQueryType(rootType: GraphQLTypeDef): string {
   const connectionName = `${typeName}${typeNamePlural.charAt(0).toUpperCase() + typeNamePlural.slice(1)}Connection`
 
   return `type Query {
-  """Get a single ${typeName} by ID"""
+  """Get a single ${typeName} by ID with ETag support"""
   ${typeNameLower}(
     """Document ID"""
     id: ID!
     
     """Partition key (optional, defaults to ID if not provided)"""
     partitionKey: String
-  ): ${typeName}
+    
+    """ETag for conditional read (returns null if match)"""
+    ifNoneMatch: String
+  ): ${typeName}Result
 
   """List ${typeName}s with pagination, filtering, and sorting"""
   ${typeNamePlural}(
@@ -288,6 +387,9 @@ function buildQueryType(rootType: GraphQLTypeDef): string {
     
     """Sort direction (default: ASC)"""
     orderDirection: OrderDirection = ASC
+    
+    """WHERE filter conditions"""
+    where: ${typeName}WhereInput
   ): ${connectionName}!
 }`
 }

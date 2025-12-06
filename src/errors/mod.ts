@@ -56,6 +56,10 @@ export enum ErrorCode {
   GATEWAY_TIMEOUT = 'GATEWAY_TIMEOUT',
   /** Request timeout */
   REQUEST_TIMEOUT = 'REQUEST_TIMEOUT',
+  /** Conditional check failed (ETag mismatch) */
+  CONDITIONAL_CHECK_FAILED = 'CONDITIONAL_CHECK_FAILED',
+  /** Invalid filter in WHERE clause */
+  INVALID_FILTER = 'INVALID_FILTER',
   /** Unknown error */
   UNKNOWN_ERROR = 'UNKNOWN_ERROR',
 }
@@ -370,6 +374,102 @@ export class InvalidFieldNameError extends CosmosDBError {
       severity: 'high',
       retryable: false,
     })
+  }
+}
+
+/**
+ * Error thrown when ETag conditional check fails on read
+ *
+ * Indicates the document has been modified since the client last read it
+ * (ETag mismatch). This is the equivalent of HTTP 304 Not Modified behavior.
+ *
+ * @example
+ * ```ts
+ * throw new ConditionalCheckFailedError({
+ *   message: 'Document ETag does not match ifNoneMatch value',
+ *   context,
+ *   metadata: { providedEtag: 'abc123', currentEtag: 'xyz789' }
+ * });
+ * ```
+ */
+export class ConditionalCheckFailedError extends CosmosDBError {
+  public readonly metadata: CosmosDBErrorMetadata
+
+  constructor({
+    message,
+    context,
+    metadata = {},
+  }: {
+    message: string
+    context: CosmosDBErrorContext
+    metadata?: CosmosDBErrorMetadata
+  }) {
+    super({
+      message,
+      context,
+      code: ErrorCode.CONDITIONAL_CHECK_FAILED,
+      severity: 'low',
+      retryable: false,
+    })
+    this.metadata = metadata
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      metadata: this.metadata,
+    }
+  }
+}
+
+/**
+ * Error thrown when WHERE clause filter is invalid
+ *
+ * Indicates the filter structure, operators, or values are malformed
+ * or contain unsafe patterns.
+ *
+ * @example
+ * ```ts
+ * throw new InvalidFilterError({
+ *   message: 'Unsupported WHERE operator: "regex"',
+ *   context,
+ *   field: 'name',
+ *   operator: 'regex'
+ * });
+ * ```
+ */
+export class InvalidFilterError extends CosmosDBError {
+  public readonly field?: string
+  public readonly operator?: string
+
+  constructor({
+    message,
+    context,
+    field,
+    operator,
+  }: {
+    message: string
+    context: CosmosDBErrorContext
+    field?: string
+    operator?: string
+  }) {
+    super({
+      message,
+      context,
+      code: ErrorCode.INVALID_FILTER,
+      severity: 'high',
+      retryable: false,
+    })
+    this.field = field
+    this.operator = operator
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      field: this.field,
+      operator: this.operator,
+    }
   }
 }
 
