@@ -37,6 +37,10 @@ export type FieldInfo = {
   nestedFields?: Map<string, FieldInfo>
   /** Sample of number values (for Int vs Float inference) */
   numberValues?: number[]
+  /** Whether this field should be nullable (for polymorphic array fields) */
+  isNullable?: boolean
+  /** Total objects seen in polymorphic arrays */
+  totalPolymorphicObjects?: number
 }
 
 /**

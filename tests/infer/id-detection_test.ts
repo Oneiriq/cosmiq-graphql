@@ -18,10 +18,10 @@ Deno.test('isIdField - detects _id pattern', () => {
   assertEquals(isIdField({ fieldName: '_Id' }), true)
 })
 
-Deno.test('isIdField - detects pk pattern', () => {
-  assertEquals(isIdField({ fieldName: 'pk' }), true)
-  assertEquals(isIdField({ fieldName: 'PK' }), true)
-  assertEquals(isIdField({ fieldName: 'Pk' }), true)
+Deno.test('isIdField - does not detect pk pattern (should be String)', () => {
+  assertEquals(isIdField({ fieldName: 'pk' }), false)
+  assertEquals(isIdField({ fieldName: 'PK' }), false)
+  assertEquals(isIdField({ fieldName: 'Pk' }), false)
 })
 
 Deno.test('isIdField - detects key pattern', () => {

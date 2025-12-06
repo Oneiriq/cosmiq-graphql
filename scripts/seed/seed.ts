@@ -22,6 +22,7 @@ import {
   ConflictError,
   createErrorContext,
   InternalServerError,
+  NotFoundError,
   RateLimitError,
   ServiceUnavailableError,
   UnauthorizedError,
@@ -342,20 +343,17 @@ type CosmosDBConfig = {
 /**
  * Insert a single document into CosmosDB container using @azure/cosmos client.
  *
- * @param client - CosmosClient instance
  * @param database - Database instance
  * @param containerName - Container name
  * @param document - Document to insert
  * @returns Inserted document or null if conflict (already exists)
  */
 async function insertDocument({
-  client,
   database,
   containerName,
   document,
 }: {
-  client: CosmosClient
-  database: any
+  database: ReturnType<CosmosClient['database']>
   containerName: string
   document: Record<string, unknown>
 }): Promise<Record<string, unknown> | null> {
@@ -364,8 +362,9 @@ async function insertDocument({
   try {
     const { resource } = await container.items.upsert(document)
     return resource
-  } catch (error: any) {
-    if (error.code === 409) {
+  } catch (error: unknown) {
+    const err = error as { code?: number; message?: string; constructor?: { name?: string } }
+    if (err.code === 409) {
       return null
     }
 
@@ -374,26 +373,26 @@ async function insertDocument({
       metadata: {
         container: containerName,
         documentId: document.id,
-        errorCode: error.code,
-        errorType: error.constructor?.name || 'Unknown',
-        errorMessage: error.message || String(error)
+        errorCode: err.code,
+        errorType: err.constructor?.name || 'Unknown',
+        errorMessage: err.message || String(error),
       },
     })
 
-    switch (error.code) {
+    switch (err.code) {
       case 400:
-        throw new BadRequestError({ message: `Bad request: ${error.message}`, context })
+        throw new BadRequestError({ message: `Bad request: ${err.message}`, context })
       case 401:
-        throw new UnauthorizedError({ message: `Unauthorized: ${error.message}`, context })
+        throw new UnauthorizedError({ message: `Unauthorized: ${err.message}`, context })
       case 429:
-        throw new RateLimitError({ message: `Rate limit exceeded: ${error.message}`, context })
+        throw new RateLimitError({ message: `Rate limit exceeded: ${err.message}`, context })
       case 500:
-        throw new InternalServerError({ message: `Internal server error: ${error.message}`, context })
+        throw new InternalServerError({ message: `Internal server error: ${err.message}`, context })
       case 503:
-        throw new ServiceUnavailableError({ message: `Service unavailable: ${error.message}`, context })
+        throw new ServiceUnavailableError({ message: `Service unavailable: ${err.message}`, context })
       default:
         throw new InternalServerError({
-          message: `Failed to insert document: ${error.message}`,
+          message: `Failed to insert document: ${err.message || String(error)}`,
           context,
         })
     }
@@ -403,7 +402,6 @@ async function insertDocument({
 /**
  * Bulk insert documents into a CosmosDB container with concurrency control.
  *
- * @param client - CosmosClient instance
  * @param database - Database instance
  * @param containerName - Container name
  * @param documents - Documents to insert
@@ -411,14 +409,12 @@ async function insertDocument({
  * @returns Statistics about the insert operation
  */
 async function bulkInsertDocuments({
-  client,
   database,
   containerName,
   documents,
   batchSize = 10,
 }: {
-  client: CosmosClient
-  database: any
+  database: ReturnType<CosmosClient['database']>
   containerName: string
   documents: Record<string, unknown>[]
   batchSize?: number
@@ -430,7 +426,7 @@ async function bulkInsertDocuments({
   for (let i = 0; i < documents.length; i += batchSize) {
     const batch = documents.slice(i, i + batchSize)
     const results = await Promise.allSettled(
-      batch.map((doc) => insertDocument({ client, database, containerName, document: doc })),
+      batch.map((doc) => insertDocument({ database, containerName, document: doc })),
     )
 
     for (const result of results) {
@@ -451,6 +447,130 @@ async function bulkInsertDocuments({
   }
 
   return { inserted, skipped, failed }
+}
+
+/**
+ * Ensure database and containers exist, creating them if needed.
+ * Only auto-creates when targeting emulator (localhost:8081).
+ * For production endpoints, throws error if resources don't exist.
+ *
+ * @param client - CosmosClient instance
+ * @param databaseName - Database name
+ * @param endpoint - CosmosDB endpoint URL
+ * @returns Database instance
+ */
+async function ensureDatabaseAndContainers({
+  client,
+  databaseName,
+  endpoint,
+}: {
+  client: CosmosClient
+  databaseName: string
+  endpoint: string
+}): Promise<ReturnType<typeof client.database>> {
+  const isEmulator = endpoint.includes('localhost:8081')
+  const requiredContainers = ['users', 'listings', 'files']
+  const partitionKey = '/pk'
+  const throughput = 400 // Minimum for emulator
+
+  console.log('Ensuring database and containers exist...')
+
+  // Check if database exists
+  let database
+  try {
+    database = client.database(databaseName)
+    await database.read()
+    console.log(`  ✓ Database '${databaseName}' exists`)
+  } catch (error: unknown) {
+    const err = error as { code?: number; message?: string }
+    if (err.code === 404) {
+      if (!isEmulator) {
+        const context = createErrorContext({
+          component: 'ensureDatabaseAndContainers',
+          metadata: {
+            database: databaseName,
+            endpoint,
+          },
+        })
+        throw new NotFoundError({
+          message:
+            `Database '${databaseName}' does not exist. For production endpoints, please create the database manually.`,
+          context,
+        })
+      }
+
+      // Create database for emulator
+      console.log(`  ⊕ Creating database '${databaseName}'...`)
+      const { database: newDb } = await client.databases.createIfNotExists({ id: databaseName })
+      database = newDb
+      console.log(`  ✓ Database '${databaseName}' created`)
+    } else {
+      const context = createErrorContext({
+        component: 'ensureDatabaseAndContainers',
+        metadata: {
+          database: databaseName,
+          error: err.message || String(error),
+        },
+      })
+      throw new InternalServerError({
+        message: `Failed to check database existence: ${err.message || String(error)}`,
+        context,
+      })
+    }
+  }
+
+  // Ensure containers exist
+  for (const containerName of requiredContainers) {
+    try {
+      const container = database.container(containerName)
+      await container.read()
+      console.log(`  ✓ Container '${containerName}' exists`)
+    } catch (error: unknown) {
+      const err = error as { code?: number; message?: string }
+      if (err.code === 404) {
+        if (!isEmulator) {
+          const context = createErrorContext({
+            component: 'ensureDatabaseAndContainers',
+            metadata: {
+              database: databaseName,
+              container: containerName,
+              endpoint,
+            },
+          })
+          throw new NotFoundError({
+            message:
+              `Container '${containerName}' does not exist. For production endpoints, please create containers manually.`,
+            context,
+          })
+        }
+
+        // Create container for emulator
+        console.log(`  ⊕ Creating container '${containerName}' with partition key '${partitionKey}'...`)
+        await database.containers.createIfNotExists({
+          id: containerName,
+          partitionKey: { paths: [partitionKey] },
+          throughput,
+        })
+        console.log(`  ✓ Container '${containerName}' created`)
+      } else {
+        const context = createErrorContext({
+          component: 'ensureDatabaseAndContainers',
+          metadata: {
+            database: databaseName,
+            container: containerName,
+            error: err.message || String(error),
+          },
+        })
+        throw new InternalServerError({
+          message: `Failed to check container '${containerName}' existence: ${err.message || String(error)}`,
+          context,
+        })
+      }
+    }
+  }
+
+  console.log('')
+  return database
 }
 
 /**
@@ -476,34 +596,17 @@ async function seedToCosmosDB(data: SeedData): Promise<void> {
     endpoint: config.endpoint,
     key: config.primaryKey,
   })
-  const database = client.database(config.database)
 
-  // Verify containers exist before attempting to seed
-  console.log('Verifying containers exist...')
-  const requiredContainers = ['users', 'listings', 'files']
-  try {
-    for (const containerName of requiredContainers) {
-      const container = database.container(containerName)
-      await container.read()
-      console.log(`  ✓ Container '${containerName}' exists`)
-    }
-  } catch (error: any) {
-    const context = createErrorContext({
-      component: 'seedToCosmosDB',
-      metadata: { error: error.message },
-    })
-    throw new InternalServerError({
-      message: `Failed to verify containers. Ensure the database and containers exist in the CosmosDB emulator. Error: ${error.message}`,
-      context,
-    })
-  }
-
-  console.log('')
+  // Ensure database and containers exist (auto-create for emulator)
+  const database = await ensureDatabaseAndContainers({
+    client,
+    databaseName: config.database,
+    endpoint: config.endpoint,
+  })
 
   try {
     console.log(`Seeding users container (${data.users.length} documents)...`)
     const usersResult = await bulkInsertDocuments({
-      client,
       database,
       containerName: 'users',
       documents: data.users,
@@ -517,7 +620,6 @@ async function seedToCosmosDB(data: SeedData): Promise<void> {
 
     console.log(`\nSeeding listings container (${data.listings.length} documents)...`)
     const listingsResult = await bulkInsertDocuments({
-      client,
       database,
       containerName: 'listings',
       documents: data.listings,
@@ -531,7 +633,6 @@ async function seedToCosmosDB(data: SeedData): Promise<void> {
 
     console.log(`\nSeeding files container (${data.files.length} documents)...`)
     const filesResult = await bulkInsertDocuments({
-      client,
       database,
       containerName: 'files',
       documents: data.files,

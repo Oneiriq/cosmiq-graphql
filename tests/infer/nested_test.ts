@@ -79,6 +79,7 @@ Deno.test('inferNestedTypes - handles single level nesting', () => {
   const result = inferNestedTypes({
     fields,
     parentTypeName: 'Character',
+    totalDocuments: 1,
     currentDepth: 0,
   })
 
@@ -120,6 +121,7 @@ Deno.test('inferNestedTypes - handles multi-level nesting', () => {
   const result = inferNestedTypes({
     fields,
     parentTypeName: 'User',
+    totalDocuments: 1,
     currentDepth: 0,
   })
 
@@ -158,6 +160,7 @@ Deno.test('inferNestedTypes - respects maxNestingDepth', () => {
   const result = inferNestedTypes({
     fields,
     parentTypeName: 'Deep',
+    totalDocuments: 1,
     config: { maxNestingDepth: 3 },
     currentDepth: 0,
   })
@@ -180,6 +183,7 @@ Deno.test('inferNestedTypes - handles empty nested fields', () => {
   const result = inferNestedTypes({
     fields,
     parentTypeName: 'Test',
+    totalDocuments: 1,
     currentDepth: 0,
   })
 
@@ -225,6 +229,7 @@ Deno.test('inferNestedTypes - handles multiple nested fields', () => {
   const result = inferNestedTypes({
     fields,
     parentTypeName: 'Player',
+    totalDocuments: 1,
     currentDepth: 0,
   })
 
@@ -257,14 +262,25 @@ Deno.test('generateTypeName - flat strategy at depth 1', () => {
   assertEquals(result, 'Address')
 })
 
-Deno.test('generateTypeName - flat strategy at depth 2 uses initials', () => {
+Deno.test('generateTypeName - flat strategy at depth 2 without initials', () => {
   const result = generateTypeName({
     parentType: 'UserAddress',
     fieldName: 'city',
     config: { nestedNamingStrategy: 'flat' },
     depth: 2,
   })
-  assertEquals(result, 'UACity')
+  assertEquals(result, 'City')
+})
+
+Deno.test('generateTypeName - flat strategy at depth 3 for arrays uses initials', () => {
+  const result = generateTypeName({
+    parentType: 'UserAddressCity',
+    fieldName: 'zipCodes',
+    config: { nestedNamingStrategy: 'flat' },
+    depth: 3,
+    isArray: true,
+  })
+  assertEquals(result, 'UACZipCode')
 })
 
 Deno.test('generateTypeName - short strategy at depth 2 uses initials', () => {
@@ -345,6 +361,7 @@ Deno.test('inferNestedTypes - respects naming strategy config', () => {
   const result = inferNestedTypes({
     fields,
     parentTypeName: 'User',
+    totalDocuments: 1,
     config: { nestedNamingStrategy: 'flat' },
     currentDepth: 0,
   })
@@ -394,6 +411,7 @@ Deno.test('inferNestedTypes - short strategy for deep nesting', () => {
   const result = inferNestedTypes({
     fields,
     parentTypeName: 'User',
+    totalDocuments: 1,
     config: { nestedNamingStrategy: 'short' },
     currentDepth: 0,
   })
