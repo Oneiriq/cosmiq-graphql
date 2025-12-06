@@ -12,7 +12,6 @@ import type { TypeSystemConfig } from '../types/infer.ts'
 const DEFAULT_ID_PATTERNS = [
   /^id$/i,
   /^_id$/i,
-  /^pk$/i,
   /^key$/i,
   /^uuid$/i,
   /^guid$/i,
