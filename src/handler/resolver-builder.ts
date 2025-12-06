@@ -4,9 +4,19 @@
  * @module
  */
 
-import type { Container, FeedResponse, SqlQuerySpec } from '@azure/cosmos'
-import type { ConnectionResult, QueryFilters, Resolvers, RetryConfig } from '../types/handler.ts'
+import type { Container, FeedResponse, SqlParameter, SqlQuerySpec } from '@azure/cosmos'
+import type {
+  ConnectionResult,
+  QueryFilters,
+  QueryResult,
+  Resolvers,
+  RetryConfig,
+  WhereFilter,
+  WhereOperator,
+} from '../types/handler.ts'
 import type { InferredSchema } from '../types/infer.ts'
+import { ConditionalCheckFailedError, InvalidFilterError } from '../errors/mod.ts'
+import { createErrorContext } from '../errors/mod.ts'
 import { withRetry } from '../utils/retryWrapper.ts'
 import {
   validateContinuationToken,
@@ -34,8 +44,8 @@ export type BuildResolversOptions = {
  * Build GraphQL resolvers for CosmosDB container
  *
  * Creates Query resolvers for single-item and list queries with advanced features:
- * - Single item: `[typeNameLower](id: ID!, partitionKey: String)` - fetches by ID with optional partition key
- * - List: `[typeNamePlural](limit: Int, partitionKey: String, continuationToken: String, orderBy: String, orderDirection: OrderDirection)` - paginated list with filtering and sorting
+ * - Single item: `[typeNameLower](id: ID!, partitionKey: String, ifNoneMatch: String)` - fetches by ID with ETag support
+ * - List: `[typeNamePlural](limit: Int, partitionKey: String, continuationToken: String, orderBy: String, orderDirection: OrderDirection, where: WhereFilter)` - paginated list with filtering and sorting
  *
  * @param options - Resolver building options
  * @returns Resolvers object with Query resolvers and field-level resolvers for nested types
@@ -61,9 +71,13 @@ export function buildResolvers({
 
   const resolvers: Resolvers = {
     Query: {
-      // Single item query: file(id: "123", partitionKey: "optional")
+      // Single item query: file(id: "123", partitionKey: "optional", ifNoneMatch: "etag")
       [typeNameLower]: async (_source, args) => {
-        const { id, partitionKey } = args as { id: string; partitionKey?: string }
+        const { id, partitionKey, ifNoneMatch } = args as {
+          id: string
+          partitionKey?: string
+          ifNoneMatch?: string
+        }
 
         // Validate partition key if provided
         const validatedPartitionKey = validatePartitionKey(partitionKey, 'resolver-builder')
@@ -73,16 +87,41 @@ export function buildResolvers({
             try {
               // Use explicit partition key if provided, otherwise use id as partition key
               const pk = validatedPartitionKey ?? id
-              const { resource } = await container
+              const response = await container
                 .item(id, pk)
-                .read()
-              return resource
-            } catch (error) {
-              // Return null for 404 errors (item not found)
-              if (error && typeof error === 'object' && 'code' in error && error.code === 404) {
-                return null
+                .read<Record<string, unknown>>()
+
+              // Extract ETag from response
+              const etag = response.etag || ''
+
+              // If ifNoneMatch is provided and matches, return null (304  Not Modified behavior)
+              if (ifNoneMatch && etag === ifNoneMatch) {
+                throw new ConditionalCheckFailedError({
+                  message: 'Document ETag matches ifNoneMatch value',
+                  context: createErrorContext({
+                    component: 'resolver-builder',
+                    metadata: { id, ifNoneMatch, etag },
+                  }),
+                })
               }
-              // Re-throw other errors
+
+              // Return data with ETag
+              const result: QueryResult<unknown> = {
+                data: response.resource || null,
+                etag,
+              }
+
+              return result
+            } catch (error) {
+              // Return null data with empty etag for 404 errors (item not found)
+              if (error && typeof error === 'object' && 'code' in error && error.code === 404) {
+                const result: QueryResult<unknown> = {
+                  data: null,
+                  etag: '',
+                }
+                return result
+              }
+              // Re-throw other errors (including ConditionalCheckFailedError)
               throw error
             }
           },
@@ -90,8 +129,11 @@ export function buildResolvers({
             config: {
               ...retry,
               shouldRetry: (error, attempt) => {
-                // Don't retry 404 errors
+                // Don't retry 404 errors or conditional check failures
                 if (error && typeof error === 'object' && 'code' in error && error.code === 404) {
+                  return false
+                }
+                if (error instanceof ConditionalCheckFailedError) {
                   return false
                 }
                 // Use custom retry logic if provided
@@ -129,6 +171,7 @@ export function buildResolvers({
  *
  * Builds and executes a parameterized CosmosDB SQL query with support for:
  * - Partition key filtering for efficiency
+ * - WHERE clause filtering with operators
  * - Custom field sorting (ASC/DESC)
  * - Continuation token-based pagination
  * - Request Unit budgeting via retry configuration
@@ -136,7 +179,7 @@ export function buildResolvers({
  * All inputs are validated before query construction to prevent injection attacks.
  *
  * @param container - CosmosDB container instance
- * @param filters - Query filters including limit, partitionKey, continuationToken, orderBy, orderDirection
+ * @param filters - Query filters including limit, partitionKey, continuationToken, orderBy, orderDirection, where
  * @param retry - Optional retry configuration for handling rate limits
  * @returns Promise resolving to ConnectionResult with items, continuationToken, and hasMore flag
  *
@@ -148,7 +191,8 @@ export function buildResolvers({
  *     limit: 50,
  *     partitionKey: 'tenant-A',
  *     orderBy: 'createdAt',
- *     orderDirection: 'DESC'
+ *     orderDirection: 'DESC',
+ *     where: { name: { eq: 'test.txt' } }
  *   }
  * })
  * // Returns: { items: [...], continuationToken: '...', hasMore: true }
@@ -162,7 +206,7 @@ async function executeListQuery({
   retry,
 }: {
   container: Container
-  filters: QueryFilters
+  filters: QueryFilters & { where?: WhereFilter }
   retry?: RetryConfig
 }): Promise<ConnectionResult<unknown>> {
   return await withRetry(
@@ -180,27 +224,41 @@ async function executeListQuery({
         'resolver-builder',
       )
 
-      // Build query with filtering and sorting
-      let querySpec: string | SqlQuerySpec = 'SELECT * FROM c'
+      // Build WHERE clause from filters
+      const { whereClause, parameters } = filters.where
+        ? buildWhereClause(filters.where)
+        : { whereClause: '', parameters: [] }
 
-      // Build parameterized query if partition key is used
+      // Combine partition key and WHERE filters
+      const whereClauses: string[] = []
+      const queryParameters: SqlParameter[] = []
+
       if (validatedPartitionKey) {
-        querySpec = {
-          query: 'SELECT * FROM c WHERE c.partitionKey = @partitionKey',
-          parameters: [{ name: '@partitionKey', value: validatedPartitionKey }],
-        }
+        whereClauses.push('c.partitionKey = @partitionKey')
+        queryParameters.push({ name: '@partitionKey', value: validatedPartitionKey })
       }
 
-      // Add sorting to query string
-      if (validatedOrderBy) {
-        const baseQuery = typeof querySpec === 'string' ? querySpec : querySpec.query
-        const sortedQuery = `${baseQuery} ORDER BY c.${validatedOrderBy} ${validatedOrderDirection}`
+      if (whereClause) {
+        whereClauses.push(whereClause)
+        queryParameters.push(...parameters)
+      }
 
-        if (typeof querySpec === 'string') {
-          querySpec = sortedQuery
-        } else {
-          querySpec.query = sortedQuery
-        }
+      // Build query with filtering and sorting
+      let baseQuery = 'SELECT * FROM c'
+
+      // Add WHERE clause if any filters exist
+      if (whereClauses.length > 0) {
+        baseQuery = `${baseQuery} WHERE ${whereClauses.join(' AND ')}`
+      }
+
+      // Add sorting to query
+      if (validatedOrderBy) {
+        baseQuery = `${baseQuery} ORDER BY c.${validatedOrderBy} ${validatedOrderDirection}`
+      }
+
+      const querySpec: SqlQuerySpec = {
+        query: baseQuery,
+        parameters: queryParameters,
       }
 
       // Execute query with pagination
@@ -223,6 +281,98 @@ async function executeListQuery({
       operation: 'list-query',
     },
   )
+}
+
+/**
+ * Build WHERE clause from WhereFilter
+ *
+ * Converts a WhereFilter object into a CosmosDB SQL WHERE clause with parameterized values.
+ * Validates field names and operators to prevent SQL inj ection.
+ *
+ * @param where - WHERE filter object
+ * @returns Object with WHERE clause string and parameters array
+ *
+ * @example
+ * ```ts
+ * const { whereClause, parameters } = buildWhereClause({
+ *   name: { eq: 'test.txt' },
+ *   size: { gt: 1000 }
+ * })
+ * // Returns: {
+ * //   whereClause: '(c.name = @name_eq) AND (c.size > @size_gt)',
+ * //   parameters: [
+ * //     { name: '@name_eq', value: 'test.txt' },
+ * //     { name: '@size_gt', value: 1000 }
+ * //   ]
+ * // }
+ * ```
+ *
+ * @internal
+ */
+function buildWhereClause(where: WhereFilter): {
+  whereClause: string
+  parameters: SqlParameter[]
+} {
+  const clauses: string[] = []
+  const parameters: SqlParameter[] = []
+
+  const validOperators: WhereOperator[] = ['eq', 'ne', 'gt', 'lt', 'contains']
+
+  for (const [field, operators] of Object.entries(where)) {
+    // Validate field name
+    const validatedField = validateFieldName(field, 'resolver-builder')
+
+    for (const [operator, value] of Object.entries(operators)) {
+      // Validate operator
+      if (!validOperators.includes(operator as WhereOperator)) {
+        throw new InvalidFilterError({
+          message: `Unsupported WHERE operator: "${operator}"`,
+          context: createErrorContext({
+            component: 'resolver-builder',
+            metadata: { field, operator },
+          }),
+          field,
+          operator,
+        })
+      }
+
+      // Build SQL operator
+      const paramName = `@${validatedField}_${operator}`
+      let sqlOperator: string
+
+      switch (operator as WhereOperator) {
+        case 'eq':
+          sqlOperator = '='
+          break
+        case 'ne':
+          sqlOperator = '!='
+          break
+        case 'gt':
+          sqlOperator = '>'
+          break
+        case 'lt':
+          sqlOperator = '<'
+          break
+        case 'contains':
+          sqlOperator = 'CONTAINS'
+          break
+      }
+
+      // Build clause
+      if (operator === 'contains') {
+        clauses.push(`${sqlOperator}(c.${validatedField}, ${paramName})`)
+      } else {
+        clauses.push(`(c.${validatedField} ${sqlOperator} ${paramName})`)
+      }
+
+      parameters.push({ name: paramName, value: value as string | number | boolean | null })
+    }
+  }
+
+  return {
+    whereClause: clauses.join(' AND '),
+    parameters,
+  }
 }
 
 /**
