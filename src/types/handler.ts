@@ -493,3 +493,39 @@ export type WhereOperator = 'eq' | 'ne' | 'gt' | 'lt' | 'contains'
  * ```
  */
 export type WhereFilter = Record<string, Partial<Record<WhereOperator, unknown>>>
+
+/**
+ * Payload returned from CREATE operations
+ */
+export type CreatePayload<T> = {
+  /** The created document */
+  data: T
+  /** ETag for optimistic concurrency control */
+  etag: string
+  /** Request charge in RUs */
+  requestCharge: number
+}
+
+/**
+ * Input field definition for CREATE operations
+ */
+export type InputFieldDefinition = {
+  /** Field name */
+  name: string
+  /** GraphQL input type (e.g., 'String!', '[Int]', 'CreateUserInput') */
+  type: string
+  /** Whether field is required */
+  required: boolean
+  /** Whether field is an array */
+  isArray: boolean
+}
+
+/**
+ * Input type definition for CREATE operations
+ */
+export type InputTypeDefinition = {
+  /** Input type name (e.g., 'CreateUserInput') */
+  name: string
+  /** Field definitions */
+  fields: InputFieldDefinition[]
+}
