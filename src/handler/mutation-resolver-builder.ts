@@ -8,8 +8,10 @@ import type { Container } from '@azure/cosmos'
 import type { CreatePayload, InputTypeDefinition, OperationConfig, RetryConfig } from '../types/handler.ts'
 import { isOperationEnabled } from './operation-config-resolver.ts'
 import { type FieldSchema, validateCreateInput, validateDocumentSize } from '../utils/validation.ts'
-import { ConflictError, createErrorContext, ValidationError } from '../errors/mod.ts'
+import { ConflictError, createErrorContext, ETagMismatchError, NotFoundError, ValidationError } from '../errors/mod.ts'
 import { withRetry } from '../utils/retryWrapper.ts'
+import { applyArrayOperation, type ArrayOperation } from './array-operations.ts'
+import { buildAccessCondition, checkETagMatch } from '../utils/etag-handler.ts'
 
 /**
  * Parameters for building a CREATE mutation resolver
@@ -321,4 +323,373 @@ function extractPartitionKeyValue({
   }
 
   return pkValue
+}
+
+/**
+ * Parameters for building an UPDATE mutation resolver
+ */
+export type BuildUpdateResolverParams = {
+  /** CosmosDB container instance */
+  container: Container
+  /** GraphQL type name */
+  typeName: string
+  /** Container's partition key path (e.g., '/pk', '/userId') */
+  partitionKeyPath: string
+  /** Operation configuration for filtering enabled operations */
+  operationConfig?: OperationConfig
+  /** Retry configuration for rate limiting and transient errors */
+  retry?: RetryConfig
+}
+
+/**
+ * Build UPDATE mutation resolver for CosmosDB container
+ *
+ * Creates a GraphQL mutation resolver that:
+ * - Accepts partial document updates (PATCH semantics)
+ * - Fetches current document from CosmosDB
+ * - Validates and applies field updates
+ * - Handles array operations (append, prepend, remove, etc.)
+ * - Validates ETag for optimistic concurrency control
+ * - Updates _updatedAt timestamp
+ * - Returns updated document with new ETag and request charge
+ *
+ * Returns null if UPDATE operation is disabled in operation config.
+ *
+ * @param params - Resolver building parameters
+ * @returns Mutation resolver function or null if operation disabled
+ *
+ * @example
+ * ```ts
+ * const updateResolver = buildUpdateResolver({
+ *   container: cosmosContainer,
+ *   typeName: 'User',
+ *   partitionKeyPath: '/pk',
+ *   operationConfig: { include: ['update', 'read'] }
+ * });
+ * ```
+ */
+export function buildUpdateResolver({
+  container,
+  typeName,
+  partitionKeyPath,
+  operationConfig,
+  retry,
+}: BuildUpdateResolverParams):
+  | ((_parent: unknown, args: { id: string; partitionKey: string; input: unknown; etag?: string }) => Promise<
+    CreatePayload<unknown>
+  >)
+  | null {
+  if (operationConfig && !isOperationEnabled('update', operationConfig)) {
+    return null
+  }
+
+  const partitionKeyField = partitionKeyPath.replace(/^\//, '')
+
+  return async (_parent: unknown, args: { id: string; partitionKey: string; input: unknown; etag?: string }) => {
+    const { id, partitionKey, input, etag } = args
+
+    if (!id || typeof id !== 'string') {
+      throw new ValidationError(
+        `Document ID is required and must be a string for ${typeName} update`,
+        createErrorContext({
+          component: 'mutation-resolver-builder',
+          metadata: { typeName, providedId: id },
+        }),
+      )
+    }
+
+    if (!partitionKey || typeof partitionKey !== 'string') {
+      throw new ValidationError(
+        `Partition key is required and must be a string for ${typeName} update`,
+        createErrorContext({
+          component: 'mutation-resolver-builder',
+          metadata: { typeName, providedPartitionKey: partitionKey },
+        }),
+      )
+    }
+
+    if (input === null || input === undefined || typeof input !== 'object' || Array.isArray(input)) {
+      throw new ValidationError(
+        `Update input for ${typeName} must be a non-null object`,
+        createErrorContext({
+          component: 'mutation-resolver-builder',
+          metadata: {
+            typeName,
+            providedType: input === null ? 'null' : Array.isArray(input) ? 'array' : typeof input,
+          },
+        }),
+      )
+    }
+
+    return await withRetry(
+      async () => {
+        const inputObj = input as Record<string, unknown>
+
+        const { resource: currentDoc } = await container.item(id, partitionKey).read()
+
+        if (!currentDoc) {
+          throw new NotFoundError({
+            message: `Document with id "${id}" not found in ${typeName}`,
+            context: createErrorContext({
+              component: 'mutation-resolver-builder',
+              metadata: { typeName, documentId: id, partitionKey },
+            }),
+            metadata: { statusCode: 404 },
+          })
+        }
+
+        if (etag && !checkETagMatch({ providedEtag: etag, currentEtag: currentDoc._etag })) {
+          throw new ETagMismatchError({
+            message: `ETag mismatch for ${typeName} document "${id}". Document has been modified.`,
+            context: createErrorContext({
+              component: 'mutation-resolver-builder',
+              metadata: { typeName, documentId: id, partitionKey },
+            }),
+            providedEtag: etag,
+            currentEtag: currentDoc._etag,
+            documentId: id,
+            currentDocument: currentDoc,
+          })
+        }
+
+        const updates = { ...inputObj }
+
+        for (const [key, value] of Object.entries(updates)) {
+          if (value && typeof value === 'object' && 'type' in value) {
+            const arrayOp = value as ArrayOperation
+            currentDoc[key] = applyArrayOperation({
+              currentArray: currentDoc[key] || [],
+              operation: arrayOp,
+            })
+            delete updates[key]
+          }
+        }
+
+        const updatedDoc = {
+          ...currentDoc,
+          ...updates,
+          id,
+          [partitionKeyField]: partitionKey,
+          _updatedAt: new Date().toISOString(),
+        }
+
+        validateDocumentSize(updatedDoc, 'mutation-resolver-builder')
+
+        const accessCondition = buildAccessCondition({
+          etag: currentDoc._etag,
+          type: 'IfMatch',
+        })
+
+        const { resource, requestCharge } = await container.item(id, partitionKey).replace(updatedDoc, {
+          accessCondition,
+        })
+
+        const result: CreatePayload<unknown> = {
+          data: resource,
+          etag: resource?._etag || '',
+          requestCharge: requestCharge || 0,
+        }
+
+        return result
+      },
+      {
+        config: {
+          ...retry,
+          shouldRetry: (error, attempt) => {
+            if (
+              error instanceof ValidationError || error instanceof ETagMismatchError || error instanceof NotFoundError
+            ) {
+              return false
+            }
+
+            if (retry?.shouldRetry) {
+              return retry.shouldRetry(error, attempt)
+            }
+
+            return undefined as unknown as boolean
+          },
+        },
+        component: 'mutation-resolver-builder',
+        operation: 'update-mutation',
+      },
+    )
+  }
+}
+
+/**
+ * Parameters for building a REPLACE mutation resolver
+ */
+export type BuildReplaceResolverParams = {
+  /** CosmosDB container instance */
+  container: Container
+  /** GraphQL type name */
+  typeName: string
+  /** Container's partition key path (e.g., '/pk', '/userId') */
+  partitionKeyPath: string
+  /** Operation configuration for filtering enabled operations */
+  operationConfig?: OperationConfig
+  /** Retry configuration for rate limiting and transient errors */
+  retry?: RetryConfig
+}
+
+/**
+ * Build REPLACE mutation resolver for CosmosDB container
+ *
+ * Creates a GraphQL mutation resolver that:
+ * - Accepts complete document replacement (PUT semantics)
+ * - Fetches current document for ETag validation
+ * - Replaces entire document structure (except system fields)
+ * - Validates ETag for optimistic concurrency control
+ * - Preserves system fields (id, _etag, _ts, _createdAt, etc.)
+ * - Updates _updatedAt timestamp
+ * - Returns replaced document with new ETag and request charge
+ *
+ * Returns null if REPLACE operation is disabled in operation config.
+ *
+ * @param params - Resolver building parameters
+ * @returns Mutation resolver function or null if operation disabled
+ *
+ * @example
+ * ```ts
+ * const replaceResolver = buildReplaceResolver({
+ *   container: cosmosContainer,
+ *   typeName: 'User',
+ *   partitionKeyPath: '/pk',
+ *   operationConfig: { include: ['replace', 'read'] }
+ * });
+ * ```
+ */
+export function buildReplaceResolver({
+  container,
+  typeName,
+  partitionKeyPath,
+  operationConfig,
+  retry,
+}: BuildReplaceResolverParams):
+  | ((_parent: unknown, args: { id: string; partitionKey: string; input: unknown; etag?: string }) => Promise<
+    CreatePayload<unknown>
+  >)
+  | null {
+  if (operationConfig && !isOperationEnabled('replace', operationConfig)) {
+    return null
+  }
+
+  const partitionKeyField = partitionKeyPath.replace(/^\//, '')
+
+  return async (_parent: unknown, args: { id: string; partitionKey: string; input: unknown; etag?: string }) => {
+    const { id, partitionKey, input, etag } = args
+
+    if (!id || typeof id !== 'string') {
+      throw new ValidationError(
+        `Document ID is required and must be a string for ${typeName} replace`,
+        createErrorContext({
+          component: 'mutation-resolver-builder',
+          metadata: { typeName, providedId: id },
+        }),
+      )
+    }
+
+    if (!partitionKey || typeof partitionKey !== 'string') {
+      throw new ValidationError(
+        `Partition key is required and must be a string for ${typeName} replace`,
+        createErrorContext({
+          component: 'mutation-resolver-builder',
+          metadata: { typeName, providedPartitionKey: partitionKey },
+        }),
+      )
+    }
+
+    if (input === null || input === undefined || typeof input !== 'object' || Array.isArray(input)) {
+      throw new ValidationError(
+        `Replace input for ${typeName} must be a non-null object`,
+        createErrorContext({
+          component: 'mutation-resolver-builder',
+          metadata: {
+            typeName,
+            providedType: input === null ? 'null' : Array.isArray(input) ? 'array' : typeof input,
+          },
+        }),
+      )
+    }
+
+    return await withRetry(
+      async () => {
+        const inputObj = input as Record<string, unknown>
+
+        const { resource: currentDoc } = await container.item(id, partitionKey).read()
+
+        if (!currentDoc) {
+          throw new NotFoundError({
+            message: `Document with id "${id}" not found in ${typeName}`,
+            context: createErrorContext({
+              component: 'mutation-resolver-builder',
+              metadata: { typeName, documentId: id, partitionKey },
+            }),
+            metadata: { statusCode: 404 },
+          })
+        }
+
+        if (etag && !checkETagMatch({ providedEtag: etag, currentEtag: currentDoc._etag })) {
+          throw new ETagMismatchError({
+            message: `ETag mismatch for ${typeName} document "${id}". Document has been modified.`,
+            context: createErrorContext({
+              component: 'mutation-resolver-builder',
+              metadata: { typeName, documentId: id, partitionKey },
+            }),
+            providedEtag: etag,
+            currentEtag: currentDoc._etag,
+            documentId: id,
+            currentDocument: currentDoc,
+          })
+        }
+
+        const replacedDoc = {
+          ...inputObj,
+          id,
+          [partitionKeyField]: partitionKey,
+          _createdAt: currentDoc._createdAt,
+          _updatedAt: new Date().toISOString(),
+        }
+
+        validateDocumentSize(replacedDoc, 'mutation-resolver-builder')
+
+        const accessCondition = buildAccessCondition({
+          etag: currentDoc._etag,
+          type: 'IfMatch',
+        })
+
+        const { resource, requestCharge } = await container.item(id, partitionKey).replace(replacedDoc, {
+          accessCondition,
+        })
+
+        const result: CreatePayload<unknown> = {
+          data: resource,
+          etag: resource?._etag || '',
+          requestCharge: requestCharge || 0,
+        }
+
+        return result
+      },
+      {
+        config: {
+          ...retry,
+          shouldRetry: (error, attempt) => {
+            if (
+              error instanceof ValidationError || error instanceof ETagMismatchError || error instanceof NotFoundError
+            ) {
+              return false
+            }
+
+            if (retry?.shouldRetry) {
+              return retry.shouldRetry(error, attempt)
+            }
+
+            return undefined as unknown as boolean
+          },
+        },
+        component: 'mutation-resolver-builder',
+        operation: 'replace-mutation',
+      },
+    )
+  }
 }
