@@ -398,6 +398,8 @@ export type QueryFilters = {
   orderBy?: string
   /** Sort direction (default: ASC) */
   orderDirection?: 'ASC' | 'DESC'
+  /** Include soft-deleted documents (default: false) */
+  includeSoftDeleted?: boolean
 }
 
 /**
@@ -504,6 +506,60 @@ export type CreatePayload<T> = {
   etag: string
   /** Request charge in RUs */
   requestCharge: number
+}
+
+/**
+ * Payload returned from DELETE operations
+ */
+export type DeletePayload = {
+  /** Whether deletion was successful */
+  success: boolean
+  /** ID of the deleted document */
+  deletedId: string
+  /** Request charge in RUs */
+  requestCharge: number
+}
+
+/**
+ * Payload returned from SOFT DELETE operations
+ */
+export type SoftDeletePayload = {
+  /** Whether soft deletion was successful */
+  success: boolean
+  /** ID of the soft deleted document */
+  deletedId: string
+  /** ETag of the updated document */
+  etag: string
+  /** Request charge in RUs */
+  requestCharge: number
+}
+
+/**
+ * Input parameters for DELETE operations
+ */
+export type DeleteInput = {
+  /** Document ID to delete */
+  id: string
+  /** Partition key value */
+  partitionKey: string
+  /** Optional ETag for optimistic concurrency control */
+  etag?: string
+}
+
+/**
+ * Input parameters for SOFT DELETE operations
+ */
+export type SoftDeleteInput = {
+  /** Document ID to soft delete */
+  id: string
+  /** Partition key value */
+  partitionKey: string
+  /** Optional ETag for optimistic concurrency control */
+  etag?: string
+  /** Optional reason for deletion */
+  deleteReason?: string
+  /** Optional user/system that performed the deletion */
+  deletedBy?: string
 }
 
 /**
