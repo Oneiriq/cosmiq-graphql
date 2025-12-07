@@ -12,6 +12,7 @@ import type {
   OperationConfig,
   RetryConfig,
   SoftDeletePayload,
+  UpsertPayload,
 } from '../types/handler.ts'
 import { isOperationEnabled } from './operation-config-resolver.ts'
 import {
@@ -855,6 +856,24 @@ export function buildDeleteResolver({
 }
 
 /**
+ * Parameters for building an UPSERT mutation resolver
+ */
+export type BuildUpsertResolverParams = {
+  /** CosmosDB container instance */
+  container: Container
+  /** GraphQL type name */
+  typeName: string
+  /** Container's partition key path (e.g., '/pk', '/userId') */
+  partitionKeyPath: string
+  /** Operation configuration for filtering enabled operations */
+  operationConfig?: OperationConfig
+  /** Input type definition for validation */
+  inputTypeDef: InputTypeDefinition
+  /** Retry configuration for rate limiting and transient errors */
+  retry?: RetryConfig
+}
+
+/**
  * Parameters for building a SOFT DELETE mutation resolver
  */
 export type BuildSoftDeleteResolverParams = {
@@ -866,6 +885,153 @@ export type BuildSoftDeleteResolverParams = {
   operationConfig?: OperationConfig
   /** Retry configuration for rate limiting and transient errors */
   retry?: RetryConfig
+}
+
+/**
+ * Build UPSERT mutation resolver for CosmosDB container
+ *
+ * Creates a GraphQL mutation resolver that:
+ * - Accepts document ID, partition key, and input data
+ * - Performs atomic upsert: creates if document doesn't exist, updates if it does
+ * - Uses partition key-based existence check for efficiency
+ * - Validates input against schema
+ * - Injects _createdAt on creation, _updatedAt on both create and update
+ * - Returns UpsertPayload with data, etag, requestCharge, and wasCreated flag
+ * - Handles both new document creation and existing document updates
+ *
+ * Returns null if UPSERT operation is disabled in operation config.
+ *
+ * @param params - Resolver building parameters
+ * @returns Mutation resolver function or null if operation disabled
+ *
+ * @example
+ * ```ts
+ * const upsertResolver = buildUpsertResolver({
+ *   container: cosmosContainer,
+ *   typeName: 'User',
+ *   partitionKeyPath: '/pk',
+ *   inputTypeDef: userInputType,
+ *   operationConfig: { include: ['upsert', 'read'] }
+ * });
+ * ```
+ */
+export function buildUpsertResolver({
+  container,
+  typeName,
+  partitionKeyPath,
+  operationConfig,
+  inputTypeDef,
+  retry,
+}: BuildUpsertResolverParams):
+  | ((_parent: unknown, args: { id: string; partitionKey: string; input: unknown }) => Promise<
+    UpsertPayload<unknown>
+  >)
+  | null {
+  if (operationConfig && !isOperationEnabled('upsert', operationConfig)) {
+    return null
+  }
+
+  const partitionKeyField = partitionKeyPath.replace(/^\//, '')
+  const fieldSchema = convertInputTypeToFieldSchema(inputTypeDef)
+
+  return async (_parent: unknown, args: { id: string; partitionKey: string; input: unknown }) => {
+    const { id, partitionKey, input } = args
+
+    if (!id || typeof id !== 'string') {
+      throw new ValidationError(
+        `Document ID is required and must be a string for ${typeName} upsert`,
+        createErrorContext({
+          component: 'mutation-resolver-builder',
+          metadata: { typeName, providedId: id },
+        }),
+      )
+    }
+
+    if (!partitionKey || typeof partitionKey !== 'string') {
+      throw new ValidationError(
+        `Partition key is required and must be a string for ${typeName} upsert`,
+        createErrorContext({
+          component: 'mutation-resolver-builder',
+          metadata: { typeName, providedPartitionKey: partitionKey },
+        }),
+      )
+    }
+
+    if (input === null || input === undefined || typeof input !== 'object' || Array.isArray(input)) {
+      throw new ValidationError(
+        `Input for ${typeName} must be a non-null object`,
+        createErrorContext({
+          component: 'mutation-resolver-builder',
+          metadata: {
+            typeName,
+            providedType: input === null ? 'null' : Array.isArray(input) ? 'array' : typeof input,
+          },
+        }),
+      )
+    }
+
+    return await withRetry(
+      async () => {
+        const inputObj = input as Record<string, unknown>
+
+        validateDocumentSize(inputObj, 'mutation-resolver-builder')
+
+        validateCreateInput({
+          input: inputObj,
+          schema: fieldSchema,
+          typeName,
+          component: 'mutation-resolver-builder',
+        })
+
+        const now = new Date().toISOString()
+
+        const upsertDoc: Record<string, unknown> = {
+          ...inputObj,
+          id,
+          [partitionKeyField]: partitionKey,
+          _createdAt: now,
+          _updatedAt: now,
+        }
+
+        validateDocumentSize(upsertDoc, 'mutation-resolver-builder')
+
+        const response = await container.items.upsert(upsertDoc)
+
+        const wasCreated = response.statusCode === 201
+
+        const result: UpsertPayload<unknown> = {
+          data: response.resource,
+          etag: response.etag || '',
+          requestCharge: response.requestCharge || 0,
+          wasCreated,
+        }
+
+        return result
+      },
+      {
+        config: {
+          ...retry,
+          shouldRetry: (error, attempt) => {
+            if (error instanceof ValidationError) {
+              return false
+            }
+
+            if (error && typeof error === 'object' && 'code' in error && error.code === 409) {
+              return false
+            }
+
+            if (retry?.shouldRetry) {
+              return retry.shouldRetry(error, attempt)
+            }
+
+            return undefined as unknown as boolean
+          },
+        },
+        component: 'mutation-resolver-builder',
+        operation: 'upsert-mutation',
+      },
+    )
+  }
 }
 
 /**

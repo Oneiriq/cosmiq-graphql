@@ -487,6 +487,225 @@ export function generateUpdateSDL({
 }
 
 /**
+ * Options for generating UPSERT input SDL
+ */
+export type GenerateUpsertInputSDLOptions = {
+  /** Inferred schema containing output types */
+  schema: InferredSchema
+  /** Type name for the root type (e.g., 'File') */
+  typeName: string
+  /** Operation configuration for filtering */
+  operationConfig?: OperationConfig
+  /** Additional fields to exclude beyond system fields */
+  excludeFields?: string[]
+}
+
+/**
+ * Options for generating UPSERT payload SDL
+ */
+export type GenerateUpsertPayloadSDLOptions = {
+  /** Type name for the root type (e.g., 'File') */
+  typeName: string
+  /** Operation configuration for filtering */
+  operationConfig?: OperationConfig
+}
+
+/**
+ * Options for generating all UPSERT-related SDL
+ */
+export type GenerateUpsertSDLOptions = {
+  /** Inferred schema containing output types */
+  schema: InferredSchema
+  /** Type name for the root type (e.g., 'File') */
+  typeName: string
+  /** Operation configuration for filtering */
+  operationConfig?: OperationConfig
+  /** Additional fields to exclude beyond system fields */
+  excludeFields?: string[]
+}
+
+/**
+ * Generate SDL for UPSERT input types
+ *
+ * Converts output types to GraphQL input types suitable for UPSERT mutations.
+ * Similar to CREATE inputs, as upsert must support creating new documents.
+ * Excludes system-managed fields (id, _etag, _ts, etc.) and handles nested
+ * objects recursively. Respects operation configuration to only generate
+ * types for enabled operations.
+ *
+ * @param options - Generation options
+ * @returns SDL string for input types, or empty string if UPSERT is disabled
+ *
+ * @example
+ * ```ts
+ * const inputSDL = generateUpsertInputSDL({
+ *   schema: inferredSchema,
+ *   typeName: 'File',
+ *   operationConfig: { include: ['upsert', 'read'] }
+ * })
+ * // Returns:
+ * // input UpsertFileInput {
+ * //   name: String!
+ * //   size: Int!
+ * //   metadata: FileMetadataInput
+ * // }
+ * //
+ * // input FileMetadataInput {
+ * //   contentType: String
+ * //   encoding: String
+ * // }
+ * ```
+ */
+export function generateUpsertInputSDL({
+  schema,
+  typeName,
+  operationConfig,
+  excludeFields = [],
+}: GenerateUpsertInputSDLOptions): string {
+  if (operationConfig && !isOperationEnabled('upsert', operationConfig)) {
+    return ''
+  }
+
+  const rootInputTypeName = `Upsert${typeName}Input`
+
+  const { rootInputType, nestedInputTypes } = generateInputTypes({
+    schema,
+    rootInputTypeName,
+    excludeFields,
+  })
+
+  const parts: string[] = []
+
+  for (const nestedType of nestedInputTypes) {
+    parts.push(formatInputTypeDefinition(nestedType))
+  }
+
+  parts.push(formatInputTypeDefinition(rootInputType))
+
+  return parts.join('\n\n')
+}
+
+/**
+ * Generate SDL for UPSERT payload type
+ *
+ * Creates a payload type that wraps the upserted data with ETag, request charge,
+ * and creation status. This follows the pattern defined in UpsertPayload<T> type:
+ * { data: X!, etag: String!, requestCharge: Float!, wasCreated: Boolean! }
+ *
+ * The payload provides:
+ * - data: The upserted document matching the output type
+ * - etag: ETag value for optimistic concurrency control on future updates
+ * - requestCharge: RU consumption for tracking and optimization
+ * - wasCreated: Boolean indicating if document was created (true) or updated (false)
+ *
+ * @param options - Generation options
+ * @returns SDL string for payload type, or empty string if UPSERT is disabled
+ *
+ * @example
+ * ```ts
+ * const payloadSDL = generateUpsertPayloadSDL({
+ *   typeName: 'File',
+ *   operationConfig: { include: ['upsert'] }
+ * })
+ * // Returns:
+ * // """Payload returned from upsertFile mutation"""
+ * // type UpsertFilePayload {
+ * //   """The upserted document"""
+ * //   data: File!
+ * //
+ * //   """ETag for optimistic concurrency control"""
+ * //   etag: String!
+ * //
+ * //   """Request charge in RUs"""
+ * //   requestCharge: Float!
+ * //
+ * //   """Whether the document was created (true) or updated (false)"""
+ * //   wasCreated: Boolean!
+ * // }
+ * ```
+ */
+export function generateUpsertPayloadSDL({
+  typeName,
+  operationConfig,
+}: GenerateUpsertPayloadSDLOptions): string {
+  if (operationConfig && !isOperationEnabled('upsert', operationConfig)) {
+    return ''
+  }
+
+  return `"""Payload returned from upsert${typeName} mutation"""
+type Upsert${typeName}Payload {
+  """The upserted document"""
+  data: ${typeName}!
+  
+  """ETag for optimistic concurrency control"""
+  etag: String!
+  
+  """Request charge in RUs"""
+  requestCharge: Float!
+  
+  """Whether the document was created (true) or updated (false)"""
+  wasCreated: Boolean!
+}`
+}
+
+/**
+ * Generate complete SDL for UPSERT operations
+ *
+ * Generates both input types and payload type for UPSERT mutations.
+ * This is a convenience function that combines generateUpsertInputSDL()
+ * and generateUpsertPayloadSDL() into a single output.
+ *
+ * Returns empty string if UPSERT operation is disabled in configuration.
+ *
+ * @param options - Generation options
+ * @returns Complete SDL string with input and payload types
+ *
+ * @example
+ * ```ts
+ * const upsertSDL = generateUpsertSDL({
+ *   schema: inferredSchema,
+ *   typeName: 'File',
+ *   operationConfig: { include: ['upsert', 'read'] }
+ * })
+ * // Returns input types, nested input types, and payload type
+ * ```
+ */
+export function generateUpsertSDL({
+  schema,
+  typeName,
+  operationConfig,
+  excludeFields = [],
+}: GenerateUpsertSDLOptions): string {
+  if (operationConfig && !isOperationEnabled('upsert', operationConfig)) {
+    return ''
+  }
+
+  const parts: string[] = []
+
+  const inputSDL = generateUpsertInputSDL({
+    schema,
+    typeName,
+    operationConfig,
+    excludeFields,
+  })
+
+  if (inputSDL) {
+    parts.push(inputSDL)
+  }
+
+  const payloadSDL = generateUpsertPayloadSDL({
+    typeName,
+    operationConfig,
+  })
+
+  if (payloadSDL) {
+    parts.push(payloadSDL)
+  }
+
+  return parts.join('\n\n')
+}
+
+/**
  * Options for generating DELETE payload SDL
  */
 export type GenerateDeletePayloadSDLOptions = {
