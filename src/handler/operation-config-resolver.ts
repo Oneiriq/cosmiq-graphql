@@ -14,6 +14,12 @@ const VALID_OPERATIONS: ReadonlySet<CRUDOperation> = new Set([
   'replace',
   'delete',
   'softDelete',
+  'upsert',
+  'createMany',
+  'updateMany',
+  'deleteMany',
+  'increment',
+  'decrement',
 ])
 
 const DEFAULT_OPERATIONS: CRUDOperation[] = ['read']
