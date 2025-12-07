@@ -616,3 +616,260 @@ describe('validateContinuationToken', () => {
     assertEquals(result, '')
   })
 })
+
+import {
+  validateArrayOperation,
+  validateUpdateInput,
+} from '../../src/utils/validation.ts'
+
+Deno.test('validateUpdateInput', async (t) => {
+  await t.step('validates object input', () => {
+    validateUpdateInput({
+      input: { name: 'Updated Name', age: 30 },
+    })
+  })
+
+  await t.step('requires at least one field', () => {
+    assertThrows(
+      () => validateUpdateInput({ input: {} }),
+      ValidationError,
+      'Update input must have at least one field',
+    )
+  })
+
+  await t.step('blocks system field: id', () => {
+    assertThrows(
+      () => validateUpdateInput({ input: { id: 'new-id', name: 'test' } }),
+      ValidationError,
+      'Cannot update system fields',
+    )
+  })
+
+  await t.step('blocks system field: _etag', () => {
+    assertThrows(
+      () => validateUpdateInput({ input: { _etag: 'new-etag', name: 'test' } }),
+      ValidationError,
+      'Cannot update system fields',
+    )
+  })
+
+  await t.step('blocks system field: _ts', () => {
+    assertThrows(
+      () => validateUpdateInput({ input: { _ts: 12345, name: 'test' } }),
+      ValidationError,
+      'Cannot update system fields',
+    )
+  })
+
+  await t.step('blocks system field: _rid', () => {
+    assertThrows(
+      () => validateUpdateInput({ input: { _rid: 'resource-id', name: 'test' } }),
+      ValidationError,
+      'Cannot update system fields',
+    )
+  })
+
+  await t.step('blocks system field: _self', () => {
+    assertThrows(
+      () => validateUpdateInput({ input: { _self: 'self-link', name: 'test' } }),
+      ValidationError,
+      'Cannot update system fields',
+    )
+  })
+
+  await t.step('validates array operations', () => {
+    validateUpdateInput({
+      input: {
+        tags: { type: 'append', value: ['new-tag'] },
+      },
+    })
+  })
+
+  await t.step('accepts valid update input with multiple fields', () => {
+    validateUpdateInput({
+      input: {
+        name: 'Updated Name',
+        age: 30,
+        tags: { type: 'append', value: ['tag1'] },
+      },
+    })
+  })
+
+  await t.step('throws on non-object input (array)', () => {
+    assertThrows(
+      () => validateUpdateInput({ input: [] }),
+      ValidationError,
+      'Update input must be an object',
+    )
+  })
+
+  await t.step('throws on non-object input (string)', () => {
+    assertThrows(
+      () => validateUpdateInput({ input: 'not an object' }),
+      ValidationError,
+      'Update input must be an object',
+    )
+  })
+
+  await t.step('throws on null input', () => {
+    assertThrows(
+      () => validateUpdateInput({ input: null }),
+      ValidationError,
+      'Update input must be an object',
+    )
+  })
+
+  await t.step('throws on undefined input', () => {
+    assertThrows(
+      () => validateUpdateInput({ input: undefined }),
+      ValidationError,
+      'Update input must be an object',
+    )
+  })
+
+  await t.step('accepts nested objects in update', () => {
+    validateUpdateInput({
+      input: {
+        address: { city: 'New York', zip: '10001' },
+      },
+    })
+  })
+})
+
+Deno.test('validateArrayOperation', async (t) => {
+  await t.step('validates operation type exists', () => {
+    assertThrows(
+      () => validateArrayOperation({ operation: {} as never }),
+      ValidationError,
+      'Array operation must have a type',
+    )
+  })
+
+  await t.step('validates SET requires value', () => {
+    assertThrows(
+      () => validateArrayOperation({ operation: { type: 'set' } }),
+      ValidationError,
+      'SET operation requires value',
+    )
+  })
+
+  await t.step('validates APPEND requires value', () => {
+    assertThrows(
+      () => validateArrayOperation({ operation: { type: 'append' } }),
+      ValidationError,
+      'APPEND operation requires value',
+    )
+  })
+
+  await t.step('validates PREPEND requires value', () => {
+    assertThrows(
+      () => validateArrayOperation({ operation: { type: 'prepend' } }),
+      ValidationError,
+      'PREPEND operation requires value',
+    )
+  })
+
+  await t.step('validates REMOVE requires value', () => {
+    assertThrows(
+      () => validateArrayOperation({ operation: { type: 'remove' } }),
+      ValidationError,
+      'REMOVE operation requires value',
+    )
+  })
+
+  await t.step('validates INSERT requires value and index', () => {
+    assertThrows(
+      () => validateArrayOperation({ operation: { type: 'insert', value: 'test' } }),
+      ValidationError,
+      'INSERT operation requires index',
+    )
+  })
+
+  await t.step('validates INSERT requires value', () => {
+    assertThrows(
+      () => validateArrayOperation({ operation: { type: 'insert', index: 0 } }),
+      ValidationError,
+      'INSERT operation requires value',
+    )
+  })
+
+  await t.step('validates SPLICE requires index', () => {
+    assertThrows(
+      () => validateArrayOperation({ operation: { type: 'splice', deleteCount: 1 } }),
+      ValidationError,
+      'SPLICE operation requires index',
+    )
+  })
+
+  await t.step('validates SPLICE requires deleteCount', () => {
+    assertThrows(
+      () => validateArrayOperation({ operation: { type: 'splice', index: 0 } }),
+      ValidationError,
+      'SPLICE operation requires deleteCount',
+    )
+  })
+
+  await t.step('validates SPLICE deleteCount must be non-negative', () => {
+    assertThrows(
+      () => validateArrayOperation({ operation: { type: 'splice', index: 0, deleteCount: -1 } }),
+      ValidationError,
+      'SPLICE deleteCount must be non-negative',
+    )
+  })
+
+  await t.step('throws on invalid operation type', () => {
+    assertThrows(
+      () => validateArrayOperation({ operation: { type: 'invalid' as never } }),
+      ValidationError,
+      'Invalid array operation type',
+    )
+  })
+
+  await t.step('accepts valid SET operation', () => {
+    validateArrayOperation({
+      operation: { type: 'set', value: [1, 2, 3] },
+    })
+  })
+
+  await t.step('accepts valid APPEND operation', () => {
+    validateArrayOperation({
+      operation: { type: 'append', value: 'item' },
+    })
+  })
+
+  await t.step('accepts valid PREPEND operation', () => {
+    validateArrayOperation({
+      operation: { type: 'prepend', value: ['item1', 'item2'] },
+    })
+  })
+
+  await t.step('accepts valid REMOVE operation', () => {
+    validateArrayOperation({
+      operation: { type: 'remove', value: 'item' },
+    })
+  })
+
+  await t.step('accepts valid INSERT operation', () => {
+    validateArrayOperation({
+      operation: { type: 'insert', value: 'item', index: 0 },
+    })
+  })
+
+  await t.step('accepts valid SPLICE operation', () => {
+    validateArrayOperation({
+      operation: { type: 'splice', index: 0, deleteCount: 1, value: 'replacement' },
+    })
+  })
+
+  await t.step('accepts SPLICE without value (delete only)', () => {
+    validateArrayOperation({
+      operation: { type: 'splice', index: 0, deleteCount: 2 },
+    })
+  })
+
+  await t.step('accepts SPLICE with deleteCount of 0', () => {
+    validateArrayOperation({
+      operation: { type: 'splice', index: 0, deleteCount: 0, value: 'insert' },
+    })
+  })
+})

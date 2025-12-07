@@ -474,6 +474,76 @@ export class InvalidFilterError extends CosmosDBError {
 }
 
 /**
+ * Error thrown when an ETag mismatch occurs during update operations
+ *
+ * This error indicates an optimistic concurrency control conflict - the document
+ * has been modified by another process since it was last read. The client must
+ * resolve the conflict by either:
+ * 1. Re-fetching the current document state and reapplying their changes
+ * 2. Implementing custom conflict resolution logic using both ETags
+ *
+ * This is a **non-retryable** error as the client must explicitly handle
+ * the conflict. The error includes both the provided ETag (from the client)
+ * and the current ETag (from the database) to assist with conflict resolution.
+ *
+ * @example
+ * ```ts
+ * throw new ETagMismatchError({
+ *   message: 'Document has been modified by another process',
+ *   context,
+ *   providedEtag: '"abc123"',
+ *   currentEtag: '"xyz789"',
+ *   documentId: 'user-123',
+ *   currentDocument: { id: 'user-123', name: 'Updated Name', _etag: '"xyz789"' }
+ * });
+ * ```
+ */
+export class ETagMismatchError extends CosmosDBError {
+  public readonly providedEtag: string
+  public readonly currentEtag: string
+  public readonly documentId?: string
+  public readonly currentDocument?: Record<string, unknown>
+
+  constructor({
+    message,
+    context,
+    providedEtag,
+    currentEtag,
+    documentId,
+    currentDocument,
+  }: {
+    message: string
+    context: CosmosDBErrorContext
+    providedEtag: string
+    currentEtag: string
+    documentId?: string
+    currentDocument?: Record<string, unknown>
+  }) {
+    super({
+      message,
+      context,
+      code: ErrorCode.CONDITIONAL_CHECK_FAILED,
+      severity: 'medium',
+      retryable: false,
+    })
+    this.providedEtag = providedEtag
+    this.currentEtag = currentEtag
+    this.documentId = documentId
+    this.currentDocument = currentDocument
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      providedEtag: this.providedEtag,
+      currentEtag: this.currentEtag,
+      documentId: this.documentId,
+      currentDocument: this.currentDocument,
+    }
+  }
+}
+
+/**
  * Error thrown when CosmosDB rate limit is exceeded (HTTP 429)
  *
  * This error is retryable and should respect the retry-after header

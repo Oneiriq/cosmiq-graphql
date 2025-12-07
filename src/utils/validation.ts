@@ -4,6 +4,7 @@
  */
 
 import { createErrorContext, ValidationError } from '../errors/mod.ts'
+import type { ArrayOperation, ArrayOperationType } from '../handler/array-operations.ts'
 
 /**
  * Validate that a required string field is not empty or whitespace-only
@@ -768,5 +769,295 @@ export function validateNestedObject({
         })
       }
     }
+  }
+}
+
+/**
+ * Check if value is an array operation
+ *
+ * @param value - Value to check
+ * @returns True if value is an array operation object
+ */
+function isArrayOperation(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false
+  }
+  const obj = value as Record<string, unknown>
+  return 'type' in obj && typeof obj.type === 'string'
+}
+
+/**
+ * Validate update input for partial updates
+ *
+ * Validates that update input is valid for partial document updates.
+ * Checks for required fields, invalid system fields, and array operations.
+ *
+ * Security considerations:
+ * - Prevents updates to system fields (_etag, _ts, _rid, _self, id)
+ * - Validates array operations to prevent malformed updates
+ * - Ensures at least one field is provided for update
+ *
+ * @param input - The update input object to validate
+ * @param schema - Optional schema for field type checking
+ * @throws {ValidationError} If input is invalid
+ *
+ * @example
+ * ```ts
+ * validateUpdateInput({
+ *   input: { name: 'Updated Name', tags: { type: 'append', value: ['new-tag'] } },
+ *   schema: { name: {...}, tags: {...} }
+ * })
+ * ```
+ */
+export function validateUpdateInput({
+  input,
+  schema,
+}: {
+  input: unknown
+  schema?: Record<string, FieldSchema>
+}): void {
+  const component = 'validateUpdateInput'
+
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw new ValidationError(
+      'Update input must be an object',
+      createErrorContext({
+        component,
+        metadata: {
+          providedType: Array.isArray(input) ? 'array' : typeof input,
+          expectedType: 'object',
+        },
+      }),
+    )
+  }
+
+  const inputObj = input as Record<string, unknown>
+  const keys = Object.keys(inputObj)
+
+  if (keys.length === 0) {
+    throw new ValidationError(
+      'Update input must have at least one field',
+      createErrorContext({
+        component,
+        metadata: {
+          providedFields: 0,
+          minFields: 1,
+        },
+      }),
+    )
+  }
+
+  const systemFields = ['id', '_etag', '_ts', '_rid', '_self', '_attachments']
+  const invalidFields = keys.filter((k) => systemFields.includes(k))
+
+  if (invalidFields.length > 0) {
+    throw new ValidationError(
+      'Cannot update system fields',
+      createErrorContext({
+        component,
+        metadata: {
+          invalidFields,
+          systemFields,
+        },
+      }),
+    )
+  }
+
+  for (const [key, value] of Object.entries(inputObj)) {
+    if (value && typeof value === 'object' && !Array.isArray(value) && 'type' in value) {
+      validateArrayOperation({ operation: value as ArrayOperation })
+    }
+
+    if (schema && schema[key]) {
+      const fieldSchema = schema[key]
+      if (value !== null && value !== undefined) {
+        if (fieldSchema.isArray && !isArrayOperation(value)) {
+          if (!Array.isArray(value)) {
+            throw new ValidationError(
+              `Field "${key}" must be an array or array operation`,
+              createErrorContext({
+                component,
+                metadata: {
+                  fieldName: key,
+                  providedType: typeof value,
+                  expectedType: 'array or array operation',
+                },
+              }),
+            )
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Validate array operation structure
+ *
+ * Validates that an array operation has the correct structure and required
+ * fields for its operation type. Ensures type safety and prevents runtime errors.
+ *
+ * @param operation - The array operation to validate
+ * @throws {ValidationError} If operation is invalid or missing required fields
+ *
+ * @example
+ * ```ts
+ * validateArrayOperation({
+ *   operation: { type: 'append', value: ['item1', 'item2'] }
+ * })
+ *
+ * validateArrayOperation({
+ *   operation: { type: 'insert', value: 'item', index: 2 }
+ * })
+ * ```
+ */
+export function validateArrayOperation({
+  operation,
+}: {
+  operation: ArrayOperation
+}): void {
+  const component = 'validateArrayOperation'
+  const validTypes: ArrayOperationType[] = ['set', 'append', 'prepend', 'remove', 'insert', 'splice']
+
+  if (!operation.type) {
+    throw new ValidationError(
+      'Array operation must have a type',
+      createErrorContext({
+        component,
+        metadata: {
+          operation,
+          validTypes,
+        },
+      }),
+    )
+  }
+
+  if (!validTypes.includes(operation.type)) {
+    throw new ValidationError(
+      'Invalid array operation type',
+      createErrorContext({
+        component,
+        metadata: {
+          providedType: operation.type,
+          validTypes,
+        },
+      }),
+    )
+  }
+
+  switch (operation.type) {
+    case 'set':
+      if (operation.value === undefined) {
+        throw new ValidationError(
+          'SET operation requires value',
+          createErrorContext({
+            component,
+            metadata: { operation },
+          }),
+        )
+      }
+      break
+
+    case 'append':
+      if (operation.value === undefined) {
+        throw new ValidationError(
+          'APPEND operation requires value',
+          createErrorContext({
+            component,
+            metadata: { operation },
+          }),
+        )
+      }
+      break
+
+    case 'prepend':
+      if (operation.value === undefined) {
+        throw new ValidationError(
+          'PREPEND operation requires value',
+          createErrorContext({
+            component,
+            metadata: { operation },
+          }),
+        )
+      }
+      break
+
+    case 'remove':
+      if (operation.value === undefined) {
+        throw new ValidationError(
+          'REMOVE operation requires value',
+          createErrorContext({
+            component,
+            metadata: { operation },
+          }),
+        )
+      }
+      break
+
+    case 'insert':
+      if (typeof operation.index !== 'number') {
+        throw new ValidationError(
+          'INSERT operation requires index',
+          createErrorContext({
+            component,
+            metadata: {
+              operation,
+              providedIndex: operation.index,
+              expectedType: 'number',
+            },
+          }),
+        )
+      }
+      if (operation.value === undefined) {
+        throw new ValidationError(
+          'INSERT operation requires value',
+          createErrorContext({
+            component,
+            metadata: { operation },
+          }),
+        )
+      }
+      break
+
+    case 'splice':
+      if (typeof operation.index !== 'number') {
+        throw new ValidationError(
+          'SPLICE operation requires index',
+          createErrorContext({
+            component,
+            metadata: {
+              operation,
+              providedIndex: operation.index,
+              expectedType: 'number',
+            },
+          }),
+        )
+      }
+      if (typeof operation.deleteCount !== 'number') {
+        throw new ValidationError(
+          'SPLICE operation requires deleteCount',
+          createErrorContext({
+            component,
+            metadata: {
+              operation,
+              providedDeleteCount: operation.deleteCount,
+              expectedType: 'number',
+            },
+          }),
+        )
+      }
+      if (operation.deleteCount < 0) {
+        throw new ValidationError(
+          'SPLICE deleteCount must be non-negative',
+          createErrorContext({
+            component,
+            metadata: {
+              operation,
+              deleteCount: operation.deleteCount,
+            },
+          }),
+        )
+      }
+      break
   }
 }
