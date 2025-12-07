@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.6.5] - 2025-12-06
+
+### Added
+
+- DELETE mutation operations
+- Delete resolver in `mutation-resolver-builder.ts`
+- DeletePayload SDL types
+- Delete input validation
+- Delete integration tests
+
+### Changed
+- Extended `mutation-resolver-builder.ts` with delete resolver
+- Extended `validation.ts` with delete-specific validation
+- Extended `input-sdl-generator.ts` to generate delete input types
+
 ## [v0.6.4] - 2025-12-06
 
 ### Added
