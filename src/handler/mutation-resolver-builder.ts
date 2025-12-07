@@ -795,23 +795,23 @@ export function buildDeleteResolver({
             type: 'IfMatch',
           })
 
-          const { requestCharge } = await container.item(id, partitionKey).delete({ accessCondition })
+          const response = await container.item(id, partitionKey).delete({ accessCondition })
 
           const result: DeletePayload = {
             success: true,
             deletedId: id,
-            requestCharge: requestCharge || 0,
+            requestCharge: response.requestCharge || 0,
           }
 
           return result
         } else {
           try {
-            const { requestCharge } = await container.item(id, partitionKey).delete()
+            const response = await container.item(id, partitionKey).delete()
 
             const result: DeletePayload = {
               success: true,
               deletedId: id,
-              requestCharge: requestCharge || 0,
+              requestCharge: response.requestCharge || 0,
             }
 
             return result
