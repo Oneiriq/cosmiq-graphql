@@ -41,6 +41,10 @@ const yoga = createYoga({
 - **Operation Customization** - Include, exclude, or rename operations per container
 - **Concurrency Control** - ETag-based optimistic locking for safe updates
 - **Array Operations** - Six operation types (append, prepend, set, remove, insert, replace)
+- **Batch Operations** - Bulk data manipulation with createMany, updateMany, deleteMany
+- **Atomic Operations** - Increment and decrement numeric fields for counters and metrics
+- **Restore Capability** - Recover soft-deleted documents with restore operation
+- **Partition Key Enforcement** - Optional strict validation for partition key consistency
 - **Optimized Performance** - Efficient bulk operations and single-request UPSERT
 
 ## Requirements
@@ -91,6 +95,44 @@ mutation {
   upsertUser(id: "123", pk: "user", input: { name: "Bob" }) {
     data { id name }
     wasCreated
+  }
+}
+```
+
+### Advanced Operations
+
+**Batch Operations:**
+
+```graphql
+mutation {
+  createManyUser(input: [{name: "Alice"}, {name: "Bob"}]) {
+    succeeded { data { id name } etag }
+    failed { error index }
+    totalRequestCharge
+  }
+}
+```
+
+**Atomic Operations:**
+
+```graphql
+mutation {
+  incrementUserField(id: "123", pk: "user", field: "viewCount", by: 1) {
+    previousValue
+    newValue
+    etag
+  }
+}
+```
+
+**Restore:**
+
+```graphql
+mutation {
+  restoreUser(id: "123", pk: "user") {
+    data { id name }
+    restoredAt
+    etag
   }
 }
 ```

@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.6.7] - 2025-12-07
+
+### Added
+- Batch operations for bulk data manipulation
+  - `createMany` - Batch document creation with partial failure support
+  - `updateMany` - Batch document updates with partial failure support
+  - `deleteMany` - Batch document deletion with partial failure support
+  - Max 100 items per batch operation
+  - Returns succeeded/failed arrays with total request charge
+- Atomic numeric operations for counters and metrics
+  - `increment` - Atomic field increment operation
+  - `decrement` - Atomic field decrement operation
+  - Eliminates race conditions for concurrent numeric updates
+  - ETag support for optimistic concurrency
+  - Returns previousValue and newValue
+- Restore operation for soft-deleted documents
+  - `restore` - Reverses soft delete by clearing _deleted metadata
+  - Sets _restoredAt timestamp
+  - ETag validation support
+  - Validates document is soft-deleted before restoration
+- Partition key enforcement configuration
+  - `requirePartitionKeyOnQueries` - Optional strict validation for list queries
+  - Prevents accidental expensive cross-partition scans
+  - Backward compatible (defaults to false)
+  - Helpful error messages guide configuration
+- SDL generation for all advanced operations
+  - Batch operation types (BatchCreate/Update/DeletePayload)
+  - Atomic operation types (AtomicNumericPayload)
+  - Restore operation types (RestorePayload)
+  - Input types for batch operations
+- Comprehensive integration tests (580 lines)
+  - Batch operation tests with success/failure scenarios
+  - Atomic operation concurrency tests
+  - Restore lifecycle tests
+  - Partition key enforcement tests
+
+### Changed
+- Extended `CRUDOperation` type with: `createMany`, `updateMany`, `deleteMany`, `increment`, `decrement`, `restore`
+- Updated `ContainerConfig` with `requirePartitionKeyOnQueries` field
+- Enhanced README.md with advanced operations examples
+- Updated operation validation to support all new operation types
+
+### Fixed
+- N/A
+
+**Files Changed:** 1 new module + 7 modified + 1 new test file
+**Lines Added:** ~1,500 (production + tests + docs)
+
 ## [v0.6.6] - 2025-12-06
 
 ### Added
