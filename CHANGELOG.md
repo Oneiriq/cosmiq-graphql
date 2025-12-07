@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.6.6] - 2025-12-06
+
+### Added
+- UPSERT mutation operations (insert or update based on existence)
+- Comprehensive CRUD integration tests
+- Performance optimization across all operations
+- Batch operation support
+- Complete API documentation
+- Performance guidelines and best practices
+
+### Changed
+- Enhanced PATCH vs REPLACE semantics documentation
+- Optimized partition key usage
+- Improved caching for better performance
+- Extended integration test suite
+
 ## [v0.6.5] - 2025-12-06
 
 ### Added
