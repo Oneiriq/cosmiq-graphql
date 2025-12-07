@@ -229,9 +229,14 @@ async function executeListQuery({
         ? buildWhereClause(filters.where)
         : { whereClause: '', parameters: [] }
 
-      // Combine partition key and WHERE filters
+      // Combine partition key, soft delete filter, and WHERE filters
       const whereClauses: string[] = []
       const queryParameters: SqlParameter[] = []
+
+      // Add soft delete filter (exclude soft-deleted documents by default)
+      if (!filters.includeSoftDeleted) {
+        whereClauses.push('(NOT IS_DEFINED(c._deleted) OR c._deleted = false)')
+      }
 
       if (validatedPartitionKey) {
         whereClauses.push('c.partitionKey = @partitionKey')

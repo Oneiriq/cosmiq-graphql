@@ -1,13 +1,25 @@
 /**
  * Mutation Resolver Builder Module
- * Builds GraphQL mutation resolvers for CosmosDB operations (CREATE, UPDATE, PATCH (PLANNED))
+ * Builds GraphQL mutation resolvers for CosmosDB operations (CREATE, UPDATE, REPLACE, DELETE, SOFT DELETE)
  * @module
  */
 
 import type { Container } from '@azure/cosmos'
-import type { CreatePayload, InputTypeDefinition, OperationConfig, RetryConfig } from '../types/handler.ts'
+import type {
+  CreatePayload,
+  DeletePayload,
+  InputTypeDefinition,
+  OperationConfig,
+  RetryConfig,
+  SoftDeletePayload,
+} from '../types/handler.ts'
 import { isOperationEnabled } from './operation-config-resolver.ts'
-import { type FieldSchema, validateCreateInput, validateDocumentSize } from '../utils/validation.ts'
+import {
+  type FieldSchema,
+  validateCreateInput,
+  validateDeleteInput,
+  validateDocumentSize,
+} from '../utils/validation.ts'
 import { ConflictError, createErrorContext, ETagMismatchError, NotFoundError, ValidationError } from '../errors/mod.ts'
 import { withRetry } from '../utils/retryWrapper.ts'
 import { applyArrayOperation, type ArrayOperation } from './array-operations.ts'
@@ -689,6 +701,322 @@ export function buildReplaceResolver({
         },
         component: 'mutation-resolver-builder',
         operation: 'replace-mutation',
+      },
+    )
+  }
+}
+
+/**
+ * Parameters for building a DELETE mutation resolver
+ */
+export type BuildDeleteResolverParams = {
+  /** CosmosDB container instance */
+  container: Container
+  /** GraphQL type name */
+  typeName: string
+  /** Operation configuration for filtering enabled operations */
+  operationConfig?: OperationConfig
+  /** Retry configuration for rate limiting and transient errors */
+  retry?: RetryConfig
+}
+
+/**
+ * Build DELETE mutation resolver for CosmosDB container
+ *
+ * Creates a GraphQL mutation resolver that:
+ * - Permanently deletes a document from CosmosDB
+ * - Validates document ID and partition key
+ * - Validates ETag for optimistic concurrency control (optional)
+ * - Returns DeletePayload with success flag, deletedId, and requestCharge
+ *
+ * Returns null if DELETE operation is disabled in operation config.
+ *
+ * @param params - Resolver building parameters
+ * @returns Mutation resolver function or null if operation disabled
+ *
+ * @example
+ * ```ts
+ * const deleteResolver = buildDeleteResolver({
+ *   container: cosmosContainer,
+ *   typeName: 'User',
+ *   operationConfig: { include: ['delete', 'read'] }
+ * });
+ * ```
+ */
+export function buildDeleteResolver({
+  container,
+  typeName,
+  operationConfig,
+  retry,
+}: BuildDeleteResolverParams):
+  | ((_parent: unknown, args: { id: string; partitionKey: string; etag?: string }) => Promise<DeletePayload>)
+  | null {
+  if (operationConfig && !isOperationEnabled('delete', operationConfig)) {
+    return null
+  }
+
+  return async (_parent: unknown, args: { id: string; partitionKey: string; etag?: string }) => {
+    const { id, partitionKey, etag } = args
+
+    validateDeleteInput({ id, partitionKey })
+
+    return await withRetry(
+      async () => {
+        if (etag) {
+          const { resource: currentDoc } = await container.item(id, partitionKey).read()
+
+          if (!currentDoc) {
+            throw new NotFoundError({
+              message: `Document with id "${id}" not found in ${typeName}`,
+              context: createErrorContext({
+                component: 'mutation-resolver-builder',
+                metadata: { typeName, documentId: id, partitionKey },
+              }),
+              metadata: { statusCode: 404 },
+            })
+          }
+
+          if (!checkETagMatch({ providedEtag: etag, currentEtag: currentDoc._etag })) {
+            throw new ETagMismatchError({
+              message: `ETag mismatch for ${typeName} document "${id}". Document has been modified.`,
+              context: createErrorContext({
+                component: 'mutation-resolver-builder',
+                metadata: { typeName, documentId: id, partitionKey },
+              }),
+              providedEtag: etag,
+              currentEtag: currentDoc._etag,
+              documentId: id,
+              currentDocument: currentDoc,
+            })
+          }
+
+          const accessCondition = buildAccessCondition({
+            etag: currentDoc._etag,
+            type: 'IfMatch',
+          })
+
+          const { requestCharge } = await container.item(id, partitionKey).delete({ accessCondition })
+
+          const result: DeletePayload = {
+            success: true,
+            deletedId: id,
+            requestCharge: requestCharge || 0,
+          }
+
+          return result
+        } else {
+          try {
+            const { requestCharge } = await container.item(id, partitionKey).delete()
+
+            const result: DeletePayload = {
+              success: true,
+              deletedId: id,
+              requestCharge: requestCharge || 0,
+            }
+
+            return result
+          } catch (error) {
+            if (error && typeof error === 'object' && 'code' in error && error.code === 404) {
+              throw new NotFoundError({
+                message: `Document with id "${id}" not found in ${typeName}`,
+                context: createErrorContext({
+                  component: 'mutation-resolver-builder',
+                  metadata: { typeName, documentId: id, partitionKey },
+                }),
+                metadata: { statusCode: 404 },
+              })
+            }
+            throw error
+          }
+        }
+      },
+      {
+        config: {
+          ...retry,
+          shouldRetry: (error, attempt) => {
+            if (
+              error instanceof ValidationError || error instanceof ETagMismatchError || error instanceof NotFoundError
+            ) {
+              return false
+            }
+
+            if (retry?.shouldRetry) {
+              return retry.shouldRetry(error, attempt)
+            }
+
+            return undefined as unknown as boolean
+          },
+        },
+        component: 'mutation-resolver-builder',
+        operation: 'delete-mutation',
+      },
+    )
+  }
+}
+
+/**
+ * Parameters for building a SOFT DELETE mutation resolver
+ */
+export type BuildSoftDeleteResolverParams = {
+  /** CosmosDB container instance */
+  container: Container
+  /** GraphQL type name */
+  typeName: string
+  /** Operation configuration for filtering enabled operations */
+  operationConfig?: OperationConfig
+  /** Retry configuration for rate limiting and transient errors */
+  retry?: RetryConfig
+}
+
+/**
+ * Build SOFT DELETE mutation resolver for CosmosDB container
+ *
+ * Creates a GraphQL mutation resolver that:
+ * - Marks a document as deleted by updating metadata fields
+ * - Sets _deleted: true, _deletedAt, _deletedBy, _deleteReason
+ * - Preserves the document for audit trails and potential recovery
+ * - Validates ETag for optimistic concurrency control (optional)
+ * - Makes soft delete idempotent (returns success if already soft-deleted)
+ * - Updates _updatedAt timestamp
+ * - Returns SoftDeletePayload with success flag, deletedId, etag, and requestCharge
+ *
+ * Returns null if SOFT DELETE operation is disabled in operation config.
+ *
+ * @param params - Resolver building parameters
+ * @returns Mutation resolver function or null if operation disabled
+ *
+ * @example
+ * ```ts
+ * const softDeleteResolver = buildSoftDeleteResolver({
+ *   container: cosmosContainer,
+ *   typeName: 'User',
+ *   operationConfig: { include: ['softDelete', 'read'] }
+ * });
+ * ```
+ */
+export function buildSoftDeleteResolver({
+  container,
+  typeName,
+  operationConfig,
+  retry,
+}: BuildSoftDeleteResolverParams):
+  | ((_parent: unknown, args: {
+    id: string
+    partitionKey: string
+    etag?: string
+    deleteReason?: string
+    deletedBy?: string
+  }) => Promise<SoftDeletePayload>)
+  | null {
+  if (operationConfig && !isOperationEnabled('softDelete', operationConfig)) {
+    return null
+  }
+
+  return async (_parent: unknown, args: {
+    id: string
+    partitionKey: string
+    etag?: string
+    deleteReason?: string
+    deletedBy?: string
+  }) => {
+    const { id, partitionKey, etag, deleteReason, deletedBy } = args
+
+    validateDeleteInput({ id, partitionKey })
+
+    return await withRetry(
+      async () => {
+        const { resource: currentDoc } = await container.item(id, partitionKey).read()
+
+        if (!currentDoc) {
+          throw new NotFoundError({
+            message: `Document with id "${id}" not found in ${typeName}`,
+            context: createErrorContext({
+              component: 'mutation-resolver-builder',
+              metadata: { typeName, documentId: id, partitionKey },
+            }),
+            metadata: { statusCode: 404 },
+          })
+        }
+
+        if (currentDoc._deleted === true) {
+          const result: SoftDeletePayload = {
+            success: true,
+            deletedId: id,
+            etag: currentDoc._etag || '',
+            requestCharge: 0,
+          }
+          return result
+        }
+
+        if (etag && !checkETagMatch({ providedEtag: etag, currentEtag: currentDoc._etag })) {
+          throw new ETagMismatchError({
+            message: `ETag mismatch for ${typeName} document "${id}". Document has been modified.`,
+            context: createErrorContext({
+              component: 'mutation-resolver-builder',
+              metadata: { typeName, documentId: id, partitionKey },
+            }),
+            providedEtag: etag,
+            currentEtag: currentDoc._etag,
+            documentId: id,
+            currentDocument: currentDoc,
+          })
+        }
+
+        const now = new Date().toISOString()
+        const softDeletedDoc = {
+          ...currentDoc,
+          _deleted: true,
+          _deletedAt: now,
+          _updatedAt: now,
+        }
+
+        if (deletedBy) {
+          softDeletedDoc._deletedBy = deletedBy
+        }
+
+        if (deleteReason) {
+          softDeletedDoc._deleteReason = deleteReason
+        }
+
+        validateDocumentSize(softDeletedDoc, 'mutation-resolver-builder')
+
+        const accessCondition = buildAccessCondition({
+          etag: currentDoc._etag,
+          type: 'IfMatch',
+        })
+
+        const { resource, requestCharge } = await container.item(id, partitionKey).replace(softDeletedDoc, {
+          accessCondition,
+        })
+
+        const result: SoftDeletePayload = {
+          success: true,
+          deletedId: id,
+          etag: resource?._etag || '',
+          requestCharge: requestCharge || 0,
+        }
+
+        return result
+      },
+      {
+        config: {
+          ...retry,
+          shouldRetry: (error, attempt) => {
+            if (
+              error instanceof ValidationError || error instanceof ETagMismatchError || error instanceof NotFoundError
+            ) {
+              return false
+            }
+
+            if (retry?.shouldRetry) {
+              return retry.shouldRetry(error, attempt)
+            }
+
+            return undefined as unknown as boolean
+          },
+        },
+        component: 'mutation-resolver-builder',
+        operation: 'soft-delete-mutation',
       },
     )
   }

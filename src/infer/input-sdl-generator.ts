@@ -1,6 +1,6 @@
 /**
  * Input SDL Generator Module
- * Generates GraphQL SDL for (CREATE, UPDATE, PATCH (PLANNED)) operation input types and payloads
+ * Generates GraphQL SDL for (CREATE, UPDATE, DELETE, SOFT DELETE) operation input types and payloads
  * @module
  */
 
@@ -484,6 +484,139 @@ export function generateUpdateSDL({
   }
 
   return parts.join('\n\n')
+}
+
+/**
+ * Options for generating DELETE payload SDL
+ */
+export type GenerateDeletePayloadSDLOptions = {
+  /** Type name for the root type (e.g., 'File') */
+  typeName: string
+  /** Operation configuration for filtering */
+  operationConfig?: OperationConfig
+}
+
+/**
+ * Generate SDL for DELETE payload type
+ *
+ * Creates a payload type for hard delete operations.
+ * The payload provides:
+ * - success: Boolean indicating if deletion was successful
+ * - deletedId: The ID of the deleted document
+ * - requestCharge: RU consumption for tracking and optimization
+ *
+ * @param options - Generation options
+ * @returns SDL string for payload type, or empty string if DELETE is disabled
+ *
+ * @example
+ * ```ts
+ * const payloadSDL = generateDeletePayloadSDL({
+ *   typeName: 'File',
+ *   operationConfig: { include: ['delete'] }
+ * })
+ * // Returns:
+ * // """Payload returned from deleteFile mutation"""
+ * // type DeleteFilePayload {
+ * //   """Whether deletion was successful"""
+ * //   success: Boolean!
+ * //
+ * //   """ID of the deleted document"""
+ * //   deletedId: String!
+ * //
+ * //   """Request charge in RUs"""
+ * //   requestCharge: Float!
+ * // }
+ * ```
+ */
+export function generateDeletePayloadSDL({
+  typeName,
+  operationConfig,
+}: GenerateDeletePayloadSDLOptions): string {
+  if (operationConfig && !isOperationEnabled('delete', operationConfig)) {
+    return ''
+  }
+
+  return `"""Payload returned from delete${typeName} mutation"""
+type Delete${typeName}Payload {
+  """Whether deletion was successful"""
+  success: Boolean!
+  
+  """ID of the deleted document"""
+  deletedId: String!
+  
+  """Request charge in RUs"""
+  requestCharge: Float!
+}`
+}
+
+/**
+ * Options for generating SOFT DELETE payload SDL
+ */
+export type GenerateSoftDeletePayloadSDLOptions = {
+  /** Type name for the root type (e.g., 'File') */
+  typeName: string
+  /** Operation configuration for filtering */
+  operationConfig?: OperationConfig
+}
+
+/**
+ * Generate SDL for SOFT DELETE payload type
+ *
+ * Creates a payload type for soft delete operations.
+ * The payload provides:
+ * - success: Boolean indicating if soft deletion was successful
+ * - deletedId: The ID of the soft deleted document
+ * - etag: New ETag after soft delete update
+ * - requestCharge: RU consumption for tracking and optimization
+ *
+ * @param options - Generation options
+ * @returns SDL string for payload type, or empty string if SOFT DELETE is disabled
+ *
+ * @example
+ * ```ts
+ * const payloadSDL = generateSoftDeletePayloadSDL({
+ *   typeName: 'File',
+ *   operationConfig: { include: ['softDelete'] }
+ * })
+ * // Returns:
+ * // """Payload returned from softDeleteFile mutation"""
+ * // type SoftDeleteFilePayload {
+ * //   """Whether soft deletion was successful"""
+ * //   success: Boolean!
+ * //
+ * //   """ID of the soft deleted document"""
+ * //   deletedId: String!
+ * //
+ * //   """ETag of the updated document"""
+ * //   etag: String!
+ * //
+ * //   """Request charge in RUs"""
+ * //   requestCharge: Float!
+ * // }
+ * ```
+ */
+export function generateSoftDeletePayloadSDL({
+  typeName,
+  operationConfig,
+}: GenerateSoftDeletePayloadSDLOptions): string {
+  if (operationConfig && !isOperationEnabled('softDelete', operationConfig)) {
+    return ''
+  }
+
+  return `"""Payload returned from softDelete${typeName} mutation"""
+type SoftDelete${typeName}Payload {
+  """Whether soft deletion was successful"""
+  success: Boolean!
+  
+  """ID of the soft deleted document"""
+  deletedId: String!
+  
+  """ETag of the updated document"""
+  etag: String!
+  
+  """Request charge in RUs"""
+  requestCharge: Float!
+}`
 }
 
 /**

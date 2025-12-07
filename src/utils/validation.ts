@@ -1061,3 +1061,72 @@ export function validateArrayOperation({
       break
   }
 }
+
+/**
+ * Validate delete input parameters
+ *
+ * Validates input for DELETE and SOFT DELETE operations.
+ * Ensures required parameters are present and valid.
+ *
+ * @param options - Validation options
+ * @throws {ValidationError} If validation fails
+ *
+ * @example
+ * ```ts
+ * validateDeleteInput({
+ *   id: 'doc-123',
+ *   partitionKey: 'tenant-A',
+ *   checkSoftDeleted: false
+ * })
+ * ```
+ */
+export function validateDeleteInput({
+  id,
+  partitionKey,
+  checkSoftDeleted,
+}: {
+  id: string
+  partitionKey: string
+  checkSoftDeleted?: boolean
+}): void {
+  const component = 'validateDeleteInput'
+
+  if (!id || typeof id !== 'string' || id.trim() === '') {
+    throw new ValidationError(
+      'Document ID is required and must be a non-empty string',
+      createErrorContext({
+        component,
+        metadata: {
+          providedId: id,
+          providedType: typeof id,
+        },
+      }),
+    )
+  }
+
+  if (!partitionKey || typeof partitionKey !== 'string' || partitionKey.trim() === '') {
+    throw new ValidationError(
+      'Partition key is required and must be a non-empty string',
+      createErrorContext({
+        component,
+        metadata: {
+          providedPartitionKey: partitionKey,
+          providedType: typeof partitionKey,
+        },
+      }),
+    )
+  }
+
+  if (checkSoftDeleted !== undefined && typeof checkSoftDeleted !== 'boolean') {
+    throw new ValidationError(
+      'checkSoftDeleted must be a boolean',
+      createErrorContext({
+        component,
+        metadata: {
+          providedCheckSoftDeleted: checkSoftDeleted,
+          providedType: typeof checkSoftDeleted,
+        },
+      }),
+    )
+  }
+}
