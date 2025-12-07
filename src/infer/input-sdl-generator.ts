@@ -1010,6 +1010,381 @@ function convertTypeToUpdateInputType({
 }
 
 /**
+ * Options for generating batch create SDL
+ */
+export type GenerateBatchCreateSDLOptions = {
+  /** Type name for the root type (e.g., 'File') */
+  typeName: string
+  /** Operation configuration for filtering */
+  operationConfig?: OperationConfig
+}
+
+/**
+ * Generate SDL for batch CREATE operations
+ *
+ * Creates input types and payload types for createMany mutations.
+ * The operation accepts an array of create inputs and returns results
+ * with succeeded/failed items and total request charge.
+ *
+ * @param options - Generation options
+ * @returns SDL string for batch create types, or empty string if disabled
+ *
+ * @example
+ * ```ts
+ * const batchCreateSDL = generateBatchCreateSDL({
+ *   typeName: 'User',
+ *   operationConfig: { include: ['createMany'] }
+ * })
+ * ```
+ */
+export function generateBatchCreateSDL({
+  typeName,
+  operationConfig,
+}: GenerateBatchCreateSDLOptions): string {
+  if (operationConfig && !isOperationEnabled('createMany', operationConfig)) {
+    return ''
+  }
+
+  return `"""Result of a successful batch create operation"""
+type Create${typeName}Result {
+  """The created document"""
+  data: ${typeName}!
+  
+  """ETag for optimistic concurrency control"""
+  etag: String!
+}
+
+"""Failure details for a batch create operation"""
+type Create${typeName}Failure {
+  """The input that failed to create"""
+  input: JSON!
+  
+  """Error message"""
+  error: String!
+  
+  """Index of the failed item in the input array"""
+  index: Int!
+}
+
+"""Payload returned from createMany${typeName} mutation"""
+type BatchCreate${typeName}Payload {
+  """Successfully created items"""
+  succeeded: [Create${typeName}Result!]!
+  
+  """Failed items with error details"""
+  failed: [Create${typeName}Failure!]!
+  
+  """Total request charge in RUs for all operations"""
+  totalRequestCharge: Float!
+}`
+}
+
+/**
+ * Options for generating batch update SDL
+ */
+export type GenerateBatchUpdateSDLOptions = {
+  /** Type name for the root type (e.g., 'File') */
+  typeName: string
+  /** Operation configuration for filtering */
+  operationConfig?: OperationConfig
+}
+
+/**
+ * Generate SDL for batch UPDATE operations
+ *
+ * Creates input types and payload types for updateMany mutations.
+ * Each item requires id, pk, and update data. Returns results with
+ * succeeded/failed items and total request charge.
+ *
+ * @param options - Generation options
+ * @returns SDL string for batch update types, or empty string if disabled
+ *
+ * @example
+ * ```ts
+ * const batchUpdateSDL = generateBatchUpdateSDL({
+ *   typeName: 'User',
+ *   operationConfig: { include: ['updateMany'] }
+ * })
+ * ```
+ */
+export function generateBatchUpdateSDL({
+  typeName,
+  operationConfig,
+}: GenerateBatchUpdateSDLOptions): string {
+  if (operationConfig && !isOperationEnabled('updateMany', operationConfig)) {
+    return ''
+  }
+
+  return `"""Input for a single item in batch update"""
+input UpdateMany${typeName}Item {
+  """Document ID"""
+  id: ID!
+  
+  """Partition key value"""
+  pk: String!
+  
+  """Update data for this item"""
+  data: Update${typeName}Input!
+}
+
+"""Result of a successful batch update operation"""
+type Update${typeName}Result {
+  """The updated document"""
+  data: ${typeName}!
+  
+  """ETag for optimistic concurrency control"""
+  etag: String!
+  
+  """Document ID"""
+  id: ID!
+}
+
+"""Failure details for a batch update operation"""
+type Update${typeName}Failure {
+  """ID of the document that failed to update"""
+  id: ID!
+  
+  """Error message"""
+  error: String!
+  
+  """Index of the failed item in the input array"""
+  index: Int!
+}
+
+"""Payload returned from updateMany${typeName} mutation"""
+type BatchUpdate${typeName}Payload {
+  """Successfully updated items"""
+  succeeded: [Update${typeName}Result!]!
+  
+  """Failed items with error details"""
+  failed: [Update${typeName}Failure!]!
+  
+  """Total request charge in RUs for all operations"""
+  totalRequestCharge: Float!
+}`
+}
+
+/**
+ * Options for generating batch delete SDL
+ */
+export type GenerateBatchDeleteSDLOptions = {
+  /** Type name for the root type (e.g., 'File') */
+  typeName: string
+  /** Operation configuration for filtering */
+  operationConfig?: OperationConfig
+}
+
+/**
+ * Generate SDL for batch DELETE operations
+ *
+ * Creates input types and payload types for deleteMany mutations.
+ * Each item requires id and pk. Returns results with succeeded/failed
+ * items and total request charge.
+ *
+ * @param options - Generation options
+ * @returns SDL string for batch delete types, or empty string if disabled
+ *
+ * @example
+ * ```ts
+ * const batchDeleteSDL = generateBatchDeleteSDL({
+ *   typeName: 'User',
+ *   operationConfig: { include: ['deleteMany'] }
+ * })
+ * ```
+ */
+export function generateBatchDeleteSDL({
+  typeName,
+  operationConfig,
+}: GenerateBatchDeleteSDLOptions): string {
+  if (operationConfig && !isOperationEnabled('deleteMany', operationConfig)) {
+    return ''
+  }
+
+  return `"""Input for a single item in batch delete"""
+input DeleteMany${typeName}Item {
+  """Document ID"""
+  id: ID!
+  
+  """Partition key value"""
+  pk: String!
+}
+
+"""Result of a successful batch delete operation"""
+type Delete${typeName}Result {
+  """ID of the deleted document"""
+  deletedId: ID!
+}
+
+"""Failure details for a batch delete operation"""
+type Delete${typeName}Failure {
+  """ID of the document that failed to delete"""
+  id: ID!
+  
+  """Error message"""
+  error: String!
+  
+  """Index of the failed item in the input array"""
+  index: Int!
+}
+
+"""Payload returned from deleteMany${typeName} mutation"""
+type BatchDelete${typeName}Payload {
+  """Successfully deleted items"""
+  succeeded: [Delete${typeName}Result!]!
+  
+  """Failed items with error details"""
+  failed: [Delete${typeName}Failure!]!
+  
+  """Total request charge in RUs for all operations"""
+  totalRequestCharge: Float!
+}`
+}
+
+/**
+ * Options for generating increment SDL
+ */
+export type GenerateIncrementSDLOptions = {
+  /** Type name for the root type (e.g., 'File') */
+  typeName: string
+  /** Operation configuration for filtering */
+  operationConfig?: OperationConfig
+}
+
+/**
+ * Generate SDL for atomic INCREMENT operations
+ *
+ * Creates payload type for incrementing numeric fields atomically.
+ * Returns the updated document with previous and new values.
+ *
+ * @param options - Generation options
+ * @returns SDL string for increment types, or empty string if disabled
+ *
+ * @example
+ * ```ts
+ * const incrementSDL = generateIncrementSDL({
+ *   typeName: 'User',
+ *   operationConfig: { include: ['increment'] }
+ * })
+ * ```
+ */
+export function generateIncrementSDL({
+  typeName,
+  operationConfig,
+}: GenerateIncrementSDLOptions): string {
+  if (operationConfig && !isOperationEnabled('increment', operationConfig)) {
+    return ''
+  }
+
+  return `"""Payload returned from increment${typeName}Field mutation"""
+type AtomicNumeric${typeName}Payload {
+  """The updated document"""
+  data: ${typeName}!
+  
+  """ETag for optimistic concurrency control"""
+  etag: String!
+  
+  """Request charge in RUs"""
+  requestCharge: Float!
+  
+  """Previous value before the operation"""
+  previousValue: Int!
+  
+  """New value after the operation"""
+  newValue: Int!
+}`
+}
+
+/**
+ * Options for generating decrement SDL
+ */
+export type GenerateDecrementSDLOptions = {
+  /** Type name for the root type (e.g., 'File') */
+  typeName: string
+  /** Operation configuration for filtering */
+  operationConfig?: OperationConfig
+}
+
+/**
+ * Generate SDL for atomic DECREMENT operations
+ *
+ * Creates payload type for decrementing numeric fields atomically.
+ * Returns the updated document with previous and new values.
+ * Uses the same payload type as increment.
+ *
+ * @param options - Generation options
+ * @returns SDL string for decrement types, or empty string if disabled
+ *
+ * @example
+ * ```ts
+ * const decrementSDL = generateDecrementSDL({
+ *   typeName: 'User',
+ *   operationConfig: { include: ['decrement'] }
+ * })
+ * ```
+ */
+export function generateDecrementSDL({
+  typeName: _typeName,
+  operationConfig,
+}: GenerateDecrementSDLOptions): string {
+  if (operationConfig && !isOperationEnabled('decrement', operationConfig)) {
+    return ''
+  }
+
+  return ''
+}
+
+/**
+ * Options for generating restore SDL
+ */
+export type GenerateRestoreSDLOptions = {
+  /** Type name for the root type (e.g., 'File') */
+  typeName: string
+  /** Operation configuration for filtering */
+  operationConfig?: OperationConfig
+}
+
+/**
+ * Generate SDL for RESTORE operations
+ *
+ * Creates payload type for restoring soft-deleted documents.
+ * Returns the restored document with restoration timestamp.
+ *
+ * @param options - Generation options
+ * @returns SDL string for restore types, or empty string if disabled
+ *
+ * @example
+ * ```ts
+ * const restoreSDL = generateRestoreSDL({
+ *   typeName: 'User',
+ *   operationConfig: { include: ['restore'] }
+ * })
+ * ```
+ */
+export function generateRestoreSDL({
+  typeName,
+  operationConfig,
+}: GenerateRestoreSDLOptions): string {
+  if (operationConfig && !isOperationEnabled('restore', operationConfig)) {
+    return ''
+  }
+
+  return `"""Payload returned from restore${typeName} mutation"""
+type Restore${typeName}Payload {
+  """The restored document"""
+  data: ${typeName}!
+  
+  """ETag for optimistic concurrency control"""
+  etag: String!
+  
+  """Request charge in RUs"""
+  requestCharge: Float!
+  
+  """Timestamp when the document was restored"""
+  restoredAt: String!
+}`
+}
+
+/**
  * Format an input type definition as SDL
  *
  * Converts an InputTypeDefinition object into properly formatted GraphQL SDL.
