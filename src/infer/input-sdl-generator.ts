@@ -1,12 +1,16 @@
 /**
  * Input SDL Generator Module
- * Generates GraphQL SDL for CREATE operation input types and payloads
+ * Generates GraphQL SDL for (CREATE, UPDATE, PATCH (PLANNED)) operation input types and payloads
  * @module
  */
 
-import type { InferredSchema } from '../types/infer.ts'
-import type { InputTypeDefinition, OperationConfig } from '../types/handler.ts'
-import { generateInputTypes } from '../handler/input-type-generator.ts'
+import type { GraphQLFieldDef, InferredSchema } from '../types/infer.ts'
+import type { InputFieldDefinition, InputTypeDefinition, OperationConfig } from '../types/handler.ts'
+import {
+  generateInputTypes,
+  type GenerateInputTypesOptions,
+  type InputTypeGenerationResult,
+} from '../handler/input-type-generator.ts'
 import { isOperationEnabled } from '../handler/operation-config-resolver.ts'
 
 /**
@@ -37,6 +41,44 @@ export type GenerateCreatePayloadSDLOptions = {
  * Options for generating all CREATE-related SDL
  */
 export type GenerateCreateSDLOptions = {
+  /** Inferred schema containing output types */
+  schema: InferredSchema
+  /** Type name for the root type (e.g., 'File') */
+  typeName: string
+  /** Operation configuration for filtering */
+  operationConfig?: OperationConfig
+  /** Additional fields to exclude beyond system fields */
+  excludeFields?: string[]
+}
+
+/**
+ * Options for generating UPDATE input SDL
+ */
+export type GenerateUpdateInputSDLOptions = {
+  /** Inferred schema containing output types */
+  schema: InferredSchema
+  /** Type name for the root type (e.g., 'File') */
+  typeName: string
+  /** Operation configuration for filtering */
+  operationConfig?: OperationConfig
+  /** Additional fields to exclude beyond system fields */
+  excludeFields?: string[]
+}
+
+/**
+ * Options for generating UPDATE payload SDL
+ */
+export type GenerateUpdatePayloadSDLOptions = {
+  /** Type name for the root type (e.g., 'File') */
+  typeName: string
+  /** Operation configuration for filtering */
+  operationConfig?: OperationConfig
+}
+
+/**
+ * Options for generating all UPDATE-related SDL
+ */
+export type GenerateUpdateSDLOptions = {
   /** Inferred schema containing output types */
   schema: InferredSchema
   /** Type name for the root type (e.g., 'File') */
@@ -218,6 +260,401 @@ export function generateCreateSDL({
   }
 
   return parts.join('\n\n')
+}
+
+/**
+ * Generate global array operation SDL types
+ *
+ * Creates the ArrayOperation input type and ArrayOperationType enum
+ * for handling array field updates. These are global types used across
+ * all update operations.
+ *
+ * @returns SDL string for array operation types
+ *
+ * @example
+ * ```ts
+ * const arrayOpSDL = generateArrayOperationSDL()
+ * // Returns:
+ * // enum ArrayOperationType { SET APPEND PREPEND REMOVE INSERT SPLICE }
+ * // input ArrayOperation { type: ArrayOperationType! value: JSON ... }
+ * ```
+ */
+export function generateArrayOperationSDL(): string {
+  return `"""Array operation type for update operations"""
+enum ArrayOperationType {
+  """Replace the entire array"""
+  SET
+  
+  """Append item(s) to the end of the array"""
+  APPEND
+  
+  """Prepend item(s) to the beginning of the array"""
+  PREPEND
+  
+  """Remove item(s) from the array"""
+  REMOVE
+  
+  """Insert item(s) at a specific index"""
+  INSERT
+  
+  """Splice array with deleteCount and optional items"""
+  SPLICE
+}
+
+"""Array operation input for update operations"""
+input ArrayOperation {
+  """Type of array operation to perform"""
+  type: ArrayOperationType!
+  
+  """Value to use in the operation (item or items)"""
+  value: JSON
+  
+  """Index for INSERT and SPLICE operations"""
+  index: Int
+  
+  """Number of items to delete for SPLICE operation"""
+  deleteCount: Int
+}`
+}
+
+/**
+ * Generate SDL for UPDATE input types
+ *
+ * Converts output types to GraphQL input types suitable for UPDATE mutations.
+ * Unlike CREATE inputs, all fields are optional to support partial updates.
+ * Array fields use ArrayOperation type instead of direct array types.
+ * Excludes system-managed fields and handles nested objects recursively.
+ *
+ * @param options - Generation options
+ * @returns SDL string for input types, or empty string if UPDATE is disabled
+ *
+ * @example
+ * ```ts
+ * const inputSDL = generateUpdateInputSDL({
+ *   schema: inferredSchema,
+ *   typeName: 'File',
+ *   operationConfig: { include: ['update', 'read'] }
+ * })
+ * // Returns:
+ * // input UpdateFileInput {
+ * //   name: String
+ * //   size: Int
+ * //   tags: ArrayOperation
+ * //   metadata: UpdateFileMetadataInput
+ * // }
+ * ```
+ */
+export function generateUpdateInputSDL({
+  schema,
+  typeName,
+  operationConfig,
+  excludeFields = [],
+}: GenerateUpdateInputSDLOptions): string {
+  if (
+    operationConfig &&
+    !isOperationEnabled('update', operationConfig) &&
+    !isOperationEnabled('replace', operationConfig)
+  ) {
+    return ''
+  }
+
+  const rootInputTypeName = `Update${typeName}Input`
+
+  const { rootInputType, nestedInputTypes } = generateUpdateInputTypes({
+    schema,
+    rootInputTypeName,
+    excludeFields,
+  })
+
+  const parts: string[] = []
+
+  for (const nestedType of nestedInputTypes) {
+    parts.push(formatInputTypeDefinition(nestedType))
+  }
+
+  parts.push(formatInputTypeDefinition(rootInputType))
+
+  return parts.join('\n\n')
+}
+
+/**
+ * Generate SDL for UPDATE payload type
+ *
+ * Creates a payload type that wraps the updated data with ETag and request charge.
+ * Similar to CREATE payload but for update operations.
+ *
+ * @param options - Generation options
+ * @returns SDL string for payload type, or empty string if UPDATE is disabled
+ *
+ * @example
+ * ```ts
+ * const payloadSDL = generateUpdatePayloadSDL({
+ *   typeName: 'File',
+ *   operationConfig: { include: ['update'] }
+ * })
+ * // Returns:
+ * // type UpdateFilePayload {
+ * //   data: File!
+ * //   etag: String!
+ * //   requestCharge: Float!
+ * // }
+ * ```
+ */
+export function generateUpdatePayloadSDL({
+  typeName,
+  operationConfig,
+}: GenerateUpdatePayloadSDLOptions): string {
+  if (
+    operationConfig &&
+    !isOperationEnabled('update', operationConfig) &&
+    !isOperationEnabled('replace', operationConfig)
+  ) {
+    return ''
+  }
+
+  return `"""Payload returned from update${typeName} mutation"""
+type Update${typeName}Payload {
+  """The updated document"""
+  data: ${typeName}!
+  
+  """ETag for optimistic concurrency control"""
+  etag: String!
+  
+  """Request charge in RUs"""
+  requestCharge: Float!
+}`
+}
+
+/**
+ * Generate complete SDL for UPDATE operations
+ *
+ * Generates both input types and payload type for UPDATE mutations.
+ * This is a convenience function that combines generateUpdateInputSDL()
+ * and generateUpdatePayloadSDL() into a single output.
+ *
+ * Returns empty string if UPDATE operation is disabled in configuration.
+ *
+ * @param options - Generation options
+ * @returns Complete SDL string with input and payload types
+ *
+ * @example
+ * ```ts
+ * const updateSDL = generateUpdateSDL({
+ *   schema: inferredSchema,
+ *   typeName: 'File',
+ *   operationConfig: { include: ['update', 'read'] }
+ * })
+ * // Returns input types, nested input types, and payload type
+ * ```
+ */
+export function generateUpdateSDL({
+  schema,
+  typeName,
+  operationConfig,
+  excludeFields = [],
+}: GenerateUpdateSDLOptions): string {
+  if (
+    operationConfig &&
+    !isOperationEnabled('update', operationConfig) &&
+    !isOperationEnabled('replace', operationConfig)
+  ) {
+    return ''
+  }
+
+  const parts: string[] = []
+
+  const inputSDL = generateUpdateInputSDL({
+    schema,
+    typeName,
+    operationConfig,
+    excludeFields,
+  })
+
+  if (inputSDL) {
+    parts.push(inputSDL)
+  }
+
+  const payloadSDL = generateUpdatePayloadSDL({
+    typeName,
+    operationConfig,
+  })
+
+  if (payloadSDL) {
+    parts.push(payloadSDL)
+  }
+
+  return parts.join('\n\n')
+}
+
+/**
+ * Generate update input types from inferred schema
+ *
+ * Similar to generateInputTypes but for UPDATE operations.
+ * All fields are optional to support partial updates.
+ * Array fields use ArrayOperation type instead of direct array types.
+ *
+ * @param options - Generation options
+ * @returns Input type definitions for root and nested update types
+ *
+ * @internal
+ */
+function generateUpdateInputTypes({
+  schema,
+  rootInputTypeName,
+  excludeFields = [],
+}: GenerateInputTypesOptions): InputTypeGenerationResult {
+  const allExcludedFields = new Set([
+    'id',
+    '_etag',
+    '_ts',
+    '_rid',
+    '_self',
+    '_attachments',
+    ...excludeFields,
+  ])
+
+  const nestedInputTypes: InputTypeDefinition[] = []
+  const processedNestedTypes = new Map<string, InputTypeDefinition>()
+
+  const rootFields = convertFieldsToUpdateInput({
+    fields: schema.rootType.fields,
+    excludeFields: allExcludedFields,
+    nestedInputTypes,
+    processedNestedTypes,
+  })
+
+  const rootInputType: InputTypeDefinition = {
+    name: rootInputTypeName,
+    fields: rootFields,
+  }
+
+  for (const nestedType of schema.nestedTypes) {
+    if (!processedNestedTypes.has(nestedType.name)) {
+      const inputTypeName = `Update${nestedType.name}Input`
+      const nestedFields = convertFieldsToUpdateInput({
+        fields: nestedType.fields,
+        excludeFields: allExcludedFields,
+        nestedInputTypes,
+        processedNestedTypes,
+      })
+
+      const nestedInputType: InputTypeDefinition = {
+        name: inputTypeName,
+        fields: nestedFields,
+      }
+
+      processedNestedTypes.set(nestedType.name, nestedInputType)
+      nestedInputTypes.push(nestedInputType)
+    }
+  }
+
+  return {
+    rootInputType,
+    nestedInputTypes,
+  }
+}
+
+/**
+ * Options for converting fields to update input types
+ */
+type ConvertUpdateFieldsOptions = {
+  /** Fields to convert */
+  fields: GraphQLFieldDef[]
+  /** Fields to exclude */
+  excludeFields: Set<string>
+  /** Array to accumulate nested input types */
+  nestedInputTypes: InputTypeDefinition[]
+  /** Map of already processed nested types */
+  processedNestedTypes: Map<string, InputTypeDefinition>
+}
+
+/**
+ * Convert output fields to update input field definitions
+ *
+ * Similar to convertFieldsToInput but for UPDATE operations.
+ * All fields become optional, and array fields use ArrayOperation type.
+ *
+ * @param options - Conversion options
+ * @returns Array of update input field definitions
+ *
+ * @internal
+ */
+function convertFieldsToUpdateInput({
+  fields,
+  excludeFields,
+  nestedInputTypes,
+  processedNestedTypes,
+}: ConvertUpdateFieldsOptions): InputFieldDefinition[] {
+  const inputFields: InputFieldDefinition[] = []
+
+  for (const field of fields) {
+    if (excludeFields.has(field.name)) {
+      continue
+    }
+
+    const inputType = field.isArray ? 'ArrayOperation' : convertTypeToUpdateInputType({
+      field,
+      nestedInputTypes,
+      processedNestedTypes,
+    })
+
+    inputFields.push({
+      name: field.name,
+      type: inputType,
+      required: false,
+      isArray: false,
+    })
+  }
+
+  return inputFields
+}
+
+/**
+ * Options for converting a single field type to update input type
+ */
+type ConvertUpdateTypeOptions = {
+  /** Field to convert */
+  field: GraphQLFieldDef
+  /** Array to accumulate nested input types */
+  nestedInputTypes: InputTypeDefinition[]
+  /** Map of already processed nested types */
+  processedNestedTypes: Map<string, InputTypeDefinition>
+}
+
+/**
+ * Convert output type to update input type string
+ *
+ * Similar to convertTypeToInputType but for UPDATE operations.
+ * Makes all types optional (removes !) and handles nested objects.
+ *
+ * @param options - Conversion options
+ * @returns Update input type string (e.g., 'String', 'Int', 'UpdateUserInput')
+ *
+ * @internal
+ */
+function convertTypeToUpdateInputType({
+  field,
+  nestedInputTypes,
+  processedNestedTypes,
+}: ConvertUpdateTypeOptions): string {
+  let baseType = field.type.replace(/!$/, '').replace(/^\[/, '').replace(/\]$/, '')
+
+  if (field.customTypeName) {
+    const inputTypeName = `Update${field.customTypeName}Input`
+
+    if (!processedNestedTypes.has(field.customTypeName)) {
+      const placeholder: InputTypeDefinition = {
+        name: inputTypeName,
+        fields: [],
+      }
+      processedNestedTypes.set(field.customTypeName, placeholder)
+      nestedInputTypes.push(placeholder)
+    }
+
+    baseType = inputTypeName
+  }
+
+  return baseType
 }
 
 /**

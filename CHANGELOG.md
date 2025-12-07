@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.6.4] - 2025-12-06
+
+### Added
+- UPDATE mutation operations (PATCH and PUT semantics)
+- Array operations support (set, append, prepend, remove, insert, splice)
+- ETag-based concurrency control for updates
+- `array-operations.ts` with 6 operation types
+- `etag-handler.ts` for ETag validation
+- `ETagMismatchError` for conflict detection
+- UpdateX Input and UpdateXPayload SDL types
+- Update input validation
+
+### Changed
+- Extended `mutation-resolver-builder.ts` with update and replace resolvers
+- Extended `validation.ts` with update-specific validation
+- Extended `input-sdl-generator.ts` to generate update input types
+
+### Fixed
+- N/A
+
+**Files Changed:** 4 new + 4 modified
+**Lines Added:** ~750 production + ~850 tests = **~1,600 lines**
+
 ## [v0.6.3] - 2025-12-06
 
 ### Added
