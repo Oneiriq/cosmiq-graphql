@@ -1,6 +1,6 @@
 /**
  * Mutation Resolver Builder Module
- * Builds GraphQL mutation resolvers for CosmosDB CREATE operations
+ * Builds GraphQL mutation resolvers for CosmosDB operations (CREATE, UPDATE, PATCH (PLANNED))
  * @module
  */
 
