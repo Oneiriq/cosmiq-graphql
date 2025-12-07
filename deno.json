@@ -2,7 +2,7 @@
 	"lock": true,
 
 	"name": "@oneiriq/cosmiq-graphql",
-	"version": "0.6.5",
+	"version": "0.6.6",
 	"description": "Data-first GraphQL for Azure CosmosDB",
   "author": "Shon Thomas <shon@oneiriq.com> (https://oneiriq.com)",
   "license": "MIT",

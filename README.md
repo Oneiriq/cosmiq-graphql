@@ -35,9 +35,17 @@ const yoga = createYoga({
 4. Generates GraphQL SDL with queries, pagination, and filtering
 5. Creates executable GraphQL schemas for GraphQL Mesh
 
+## Features
+
+- **Complete CRUD Operations** - CREATE, READ, UPDATE, REPLACE, DELETE, SOFT DELETE, and UPSERT mutations
+- **Operation Customization** - Include, exclude, or rename operations per container
+- **Concurrency Control** - ETag-based optimistic locking for safe updates
+- **Array Operations** - Six operation types (append, prepend, set, remove, insert, replace)
+- **Optimized Performance** - Efficient bulk operations and single-request UPSERT
+
 ## Requirements
 
-- Deno `v2.5+` or Node.js `v18+`
+- Deno `v2.5+` or Node.js `v20+`
 - Azure CosmosDB account with read access to target containers or local CosmosDB emulator
 - TypeScript `v5.0+` (for development)
 
@@ -68,6 +76,24 @@ npm install @oneiriq/cosmiq-graphql
 - **`sampleDocuments(options)`** - Sample documents from container
   - Retrieves representative sample for schema inference
   - Configurable sample size and query strategy
+
+### CRUD Operations
+
+All adapters automatically generate complete CRUD mutations with ETag support:
+
+```graphql
+mutation {
+  createUser(input: { name: "Alice", email: "alice@example.com" }) {
+    data { id name }
+    etag
+  }
+  
+  upsertUser(id: "123", pk: "user", input: { name: "Bob" }) {
+    data { id name }
+    wasCreated
+  }
+}
+```
 
 ## Examples
 

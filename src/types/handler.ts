@@ -197,7 +197,7 @@ export type ConfigValidationResult = {
 /**
  * CRUD operation types for customizable resolver generation
  */
-export type CRUDOperation = 'create' | 'read' | 'update' | 'replace' | 'delete' | 'softDelete'
+export type CRUDOperation = 'create' | 'read' | 'update' | 'replace' | 'delete' | 'softDelete' | 'upsert'
 
 /**
  * Operation configuration for customizing which CRUD operations are generated
@@ -532,6 +532,20 @@ export type SoftDeletePayload = {
   etag: string
   /** Request charge in RUs */
   requestCharge: number
+}
+
+/**
+ * Payload returned from UPSERT operations
+ */
+export type UpsertPayload<T> = {
+  /** The created or updated document */
+  data: T
+  /** ETag for optimistic concurrency control */
+  etag: string
+  /** Request charge in RUs */
+  requestCharge: number
+  /** Whether document was created (true) or updated (false) */
+  wasCreated: boolean
 }
 
 /**
