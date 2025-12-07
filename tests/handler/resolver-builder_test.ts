@@ -340,7 +340,8 @@ describe('buildResolvers', () => {
 
       assertEquals(typeof capturedQuery, 'object')
       const queryObj = capturedQuery as unknown as { query: string; parameters?: unknown[] }
-      assertEquals(queryObj.query.includes('WHERE c.partitionKey = @partitionKey'), true)
+      assertEquals(queryObj.query.includes('c.partitionKey = @partitionKey'), true)
+      assertEquals(queryObj.query.includes('NOT IS_DEFINED(c._deleted) OR c._deleted = false'), true)
     })
 
     it('should not filter when partition key is not provided', async () => {
@@ -375,7 +376,7 @@ describe('buildResolvers', () => {
 
       assertEquals(typeof capturedQuery, 'object')
       const queryObj = capturedQuery as unknown as { query: string; parameters?: unknown[] }
-      assertEquals(queryObj.query, 'SELECT * FROM c')
+      assertEquals(queryObj.query, 'SELECT * FROM c WHERE (NOT IS_DEFINED(c._deleted) OR c._deleted = false)')
     })
   })
 
@@ -688,7 +689,8 @@ describe('buildResolvers', () => {
       const queryString = typeof capturedQuery === 'string'
         ? capturedQuery
         : (capturedQuery as { query: string }).query
-      assertEquals(queryString.includes('WHERE c.partitionKey = @partitionKey'), true)
+      assertEquals(queryString.includes('c.partitionKey = @partitionKey'), true)
+      assertEquals(queryString.includes('NOT IS_DEFINED(c._deleted) OR c._deleted = false'), true)
       assertEquals(queryString.includes('ORDER BY c.name ASC'), true)
     })
 
