@@ -197,7 +197,20 @@ export type ConfigValidationResult = {
 /**
  * CRUD operation types for customizable resolver generation
  */
-export type CRUDOperation = 'create' | 'read' | 'update' | 'replace' | 'delete' | 'softDelete' | 'upsert'
+export type CRUDOperation =
+  | 'create'
+  | 'read'
+  | 'update'
+  | 'replace'
+  | 'delete'
+  | 'softDelete'
+  | 'restore'
+  | 'upsert'
+  | 'createMany'
+  | 'updateMany'
+  | 'deleteMany'
+  | 'increment'
+  | 'decrement'
 
 /**
  * Operation configuration for customizing which CRUD operations are generated
@@ -252,6 +265,9 @@ export type ContainerConfig = {
 
   /** CRUD operation configuration for this container */
   operations?: OperationConfig
+
+  /** Require partition key on list queries to prevent expensive cross-partition scans (optional, default: false) */
+  requirePartitionKeyOnQueries?: boolean
 }
 
 /**
@@ -598,4 +614,70 @@ export type InputTypeDefinition = {
   name: string
   /** Field definitions */
   fields: InputFieldDefinition[]
+}
+
+/**
+ * Batch create result
+ */
+export type BatchCreateResult<T> = {
+  /** Successfully created documents */
+  succeeded: Array<{ data: T; etag: string }>
+  /** Failed create operations */
+  failed: Array<{ input: unknown; error: string; index: number }>
+  /** Total request charge across all operations */
+  totalRequestCharge: number
+}
+
+/**
+ * Batch update result
+ */
+export type BatchUpdateResult<T> = {
+  /** Successfully updated documents */
+  succeeded: Array<{ data: T; etag: string; id: string }>
+  /** Failed update operations */
+  failed: Array<{ id: string; error: string; index: number }>
+  /** Total request charge across all operations */
+  totalRequestCharge: number
+}
+
+/**
+ * Batch delete result
+ */
+export type BatchDeleteResult = {
+  /** Successfully deleted document IDs */
+  succeeded: Array<{ deletedId: string }>
+  /** Failed delete operations */
+  failed: Array<{ id: string; error: string; index: number }>
+  /** Total request charge across all operations */
+  totalRequestCharge: number
+}
+
+/**
+ * Atomic numeric operation result
+ */
+export type AtomicNumericResult<T> = {
+  /** Updated document with new field value */
+  data: T
+  /** ETag for optimistic concurrency control */
+  etag: string
+  /** Request charge in RUs */
+  requestCharge: number
+  /** Previous value of the field before increment/decrement */
+  previousValue: number
+  /** New value of the field after increment/decrement */
+  newValue: number
+}
+
+/**
+ * Payload returned from RESTORE operations
+ */
+export type RestorePayload<T> = {
+  /** The restored document */
+  data: T
+  /** ETag for optimistic concurrency control */
+  etag: string
+  /** Request charge in RUs */
+  requestCharge: number
+  /** Timestamp when the document was restored */
+  restoredAt: string
 }
