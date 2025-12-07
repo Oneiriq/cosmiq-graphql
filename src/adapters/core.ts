@@ -36,6 +36,8 @@ type ContainerInfo = {
   partitionKeyPath: string
   /** Operation configuration */
   operationConfig?: CosmosDBSubgraphConfig['containers'][number]['operations']
+  /** Require partition key on list queries */
+  requirePartitionKeyOnQueries?: boolean
 }
 
 /**
@@ -335,6 +337,7 @@ async function buildMultiContainerResolvers({
       container: info.container,
       typeName: info.typeName,
       retry,
+      requirePartitionKeyOnQueries: info.requirePartitionKeyOnQueries,
     })
 
     // Merge Query resolvers
@@ -590,6 +593,7 @@ export async function buildCoreSchema(
         schema: inferredSchema,
         partitionKeyPath,
         operationConfig: containerConfig.operations,
+        requirePartitionKeyOnQueries: containerConfig.requirePartitionKeyOnQueries,
       }
     }),
   )

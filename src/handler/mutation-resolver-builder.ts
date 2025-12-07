@@ -6,10 +6,14 @@
 
 import type { Container } from '@azure/cosmos'
 import type {
+  BatchCreateResult,
+  BatchDeleteResult,
+  BatchUpdateResult,
   CreatePayload,
   DeletePayload,
   InputTypeDefinition,
   OperationConfig,
+  RestorePayload,
   RetryConfig,
   SoftDeletePayload,
   UpsertPayload,
@@ -1183,6 +1187,851 @@ export function buildSoftDeleteResolver({
         },
         component: 'mutation-resolver-builder',
         operation: 'soft-delete-mutation',
+      },
+    )
+  }
+}
+
+const MAX_BATCH_SIZE = 100
+
+/**
+ * Parameters for building a CREATE MANY mutation resolver
+ */
+export type BuildCreateManyResolverParams = {
+  /** CosmosDB container instance */
+  container: Container
+  /** GraphQL type name */
+  typeName: string
+  /** Container's partition key path (e.g., '/pk', '/userId') */
+  partitionKeyPath: string
+  /** Operation configuration for filtering enabled operations */
+  operationConfig?: OperationConfig
+  /** Input type definition for validation */
+  inputTypeDef: InputTypeDefinition
+  /** Retry configuration for rate limiting and transient errors */
+  retry?: RetryConfig
+}
+
+/**
+ * Build CREATE MANY mutation resolver for CosmosDB container
+ *
+ * Creates a GraphQL mutation resolver that:
+ * - Accepts array of input objects
+ * - Creates multiple documents in parallel using Promise.allSettled
+ * - Generates UUID v4 for each document ID
+ * - Validates each input separately
+ * - Tracks succeeded vs failed creates
+ * - Returns BatchCreateResult with succeeded/failed arrays and total RU cost
+ *
+ * Returns null if CREATE MANY operation is disabled in operation config.
+ *
+ * @param params - Resolver building parameters
+ * @returns Mutation resolver function or null if operation disabled
+ *
+ * @example
+ * ```ts
+ * const createManyResolver = buildCreateManyResolver({
+ *   container: cosmosContainer,
+ *   typeName: 'User',
+ *   partitionKeyPath: '/pk',
+ *   inputTypeDef: userInputType,
+ *   operationConfig: { include: ['createMany', 'read'] }
+ * });
+ * ```
+ */
+export function buildCreateManyResolver({
+  container,
+  typeName,
+  partitionKeyPath,
+  operationConfig,
+  inputTypeDef,
+  retry,
+}: BuildCreateManyResolverParams):
+  | ((_parent: unknown, args: { input: unknown[] }) => Promise<BatchCreateResult<unknown>>)
+  | null {
+  if (operationConfig && !isOperationEnabled('createMany', operationConfig)) {
+    return null
+  }
+
+  const partitionKeyField = partitionKeyPath.replace(/^\//, '')
+  const fieldSchema = convertInputTypeToFieldSchema(inputTypeDef)
+
+  return async (_parent: unknown, args: { input: unknown[] }) => {
+    const { input } = args
+
+    if (!Array.isArray(input)) {
+      throw new ValidationError(
+        `Input for ${typeName} createMany must be an array`,
+        createErrorContext({
+          component: 'mutation-resolver-builder',
+          metadata: {
+            typeName,
+            providedType: input === null ? 'null' : typeof input,
+          },
+        }),
+      )
+    }
+
+    if (input.length === 0) {
+      return {
+        succeeded: [],
+        failed: [],
+        totalRequestCharge: 0,
+      }
+    }
+
+    if (input.length > MAX_BATCH_SIZE) {
+      throw new ValidationError(
+        `Batch size exceeds maximum of ${MAX_BATCH_SIZE} items for ${typeName} createMany`,
+        createErrorContext({
+          component: 'mutation-resolver-builder',
+          metadata: {
+            typeName,
+            batchSize: input.length,
+            maxBatchSize: MAX_BATCH_SIZE,
+          },
+        }),
+      )
+    }
+
+    const createOperations = input.map((item, index) => {
+      return withRetry(
+        async () => {
+          if (item === null || item === undefined || typeof item !== 'object' || Array.isArray(item)) {
+            throw new ValidationError(
+              `Item at index ${index} must be a non-null object for ${typeName}`,
+              createErrorContext({
+                component: 'mutation-resolver-builder',
+                metadata: {
+                  typeName,
+                  index,
+                  providedType: item === null ? 'null' : Array.isArray(item) ? 'array' : typeof item,
+                },
+              }),
+            )
+          }
+
+          const inputObj = item as Record<string, unknown>
+
+          validateDocumentSize(inputObj, 'mutation-resolver-builder')
+
+          validateCreateInput({
+            input: inputObj,
+            schema: fieldSchema,
+            typeName,
+            component: 'mutation-resolver-builder',
+          })
+
+          const id = crypto.randomUUID()
+
+          const partitionKeyValue = extractPartitionKeyValue({
+            input: inputObj,
+            partitionKeyField,
+            typeName,
+          })
+
+          const now = new Date().toISOString()
+
+          const document: Record<string, unknown> = {
+            ...inputObj,
+            id,
+            [partitionKeyField]: partitionKeyValue,
+            _createdAt: now,
+            _updatedAt: now,
+          }
+
+          const response = await container.items.create(document)
+
+          return {
+            data: response.resource,
+            etag: response.etag || '',
+            requestCharge: response.requestCharge || 0,
+            index,
+          }
+        },
+        {
+          config: {
+            ...retry,
+            shouldRetry: (error, attempt) => {
+              if (error && typeof error === 'object' && 'code' in error && error.code === 409) {
+                return false
+              }
+
+              if (error instanceof ValidationError || error instanceof ConflictError) {
+                return false
+              }
+
+              if (retry?.shouldRetry) {
+                return retry.shouldRetry(error, attempt)
+              }
+
+              return undefined as unknown as boolean
+            },
+          },
+          component: 'mutation-resolver-builder',
+          operation: 'create-many-mutation',
+        },
+      ).catch((error) => ({ error, index }))
+    })
+
+    const results = await Promise.allSettled(createOperations)
+
+    const succeeded: Array<{ data: unknown; etag: string }> = []
+    const failed: Array<{ input: unknown; error: string; index: number }> = []
+    let totalRequestCharge = 0
+
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i]
+
+      if (result.status === 'fulfilled') {
+        const value = result.value
+        if ('error' in value) {
+          failed.push({
+            input: input[i],
+            error: value.error instanceof Error ? value.error.message : String(value.error),
+            index: i,
+          })
+        } else {
+          succeeded.push({
+            data: value.data,
+            etag: value.etag,
+          })
+          totalRequestCharge += value.requestCharge
+        }
+      } else {
+        failed.push({
+          input: input[i],
+          error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+          index: i,
+        })
+      }
+    }
+
+    return {
+      succeeded,
+      failed,
+      totalRequestCharge,
+    }
+  }
+}
+
+/**
+ * Parameters for building an UPDATE MANY mutation resolver
+ */
+export type BuildUpdateManyResolverParams = {
+  /** CosmosDB container instance */
+  container: Container
+  /** GraphQL type name */
+  typeName: string
+  /** Container's partition key path (e.g., '/pk', '/userId') */
+  partitionKeyPath: string
+  /** Operation configuration for filtering enabled operations */
+  operationConfig?: OperationConfig
+  /** Retry configuration for rate limiting and transient errors */
+  retry?: RetryConfig
+}
+
+/**
+ * Build UPDATE MANY mutation resolver for CosmosDB container
+ *
+ * Creates a GraphQL mutation resolver that:
+ * - Accepts array of update objects (id, pk, data)
+ * - Updates multiple documents in parallel using Promise.allSettled
+ * - Uses existing UPDATE logic (PATCH semantics with array ops)
+ * - Tracks succeeded vs failed updates
+ * - Returns BatchUpdateResult with succeeded/failed arrays and total RU cost
+ *
+ * Returns null if UPDATE MANY operation is disabled in operation config.
+ *
+ * @param params - Resolver building parameters
+ * @returns Mutation resolver function or null if operation disabled
+ *
+ * @example
+ * ```ts
+ * const updateManyResolver = buildUpdateManyResolver({
+ *   container: cosmosContainer,
+ *   typeName: 'User',
+ *   partitionKeyPath: '/pk',
+ *   operationConfig: { include: ['updateMany', 'read'] }
+ * });
+ * ```
+ */
+export function buildUpdateManyResolver({
+  container,
+  typeName,
+  partitionKeyPath,
+  operationConfig,
+  retry,
+}: BuildUpdateManyResolverParams):
+  | ((_parent: unknown, args: {
+    input: Array<{ id: string; pk: string; data: unknown }>
+  }) => Promise<BatchUpdateResult<unknown>>)
+  | null {
+  if (operationConfig && !isOperationEnabled('updateMany', operationConfig)) {
+    return null
+  }
+
+  const partitionKeyField = partitionKeyPath.replace(/^\//, '')
+
+  return async (_parent: unknown, args: { input: Array<{ id: string; pk: string; data: unknown }> }) => {
+    const { input } = args
+
+    if (!Array.isArray(input)) {
+      throw new ValidationError(
+        `Input for ${typeName} updateMany must be an array`,
+        createErrorContext({
+          component: 'mutation-resolver-builder',
+          metadata: {
+            typeName,
+            providedType: input === null ? 'null' : typeof input,
+          },
+        }),
+      )
+    }
+
+    if (input.length === 0) {
+      return {
+        succeeded: [],
+        failed: [],
+        totalRequestCharge: 0,
+      }
+    }
+
+    if (input.length > MAX_BATCH_SIZE) {
+      throw new ValidationError(
+        `Batch size exceeds maximum of ${MAX_BATCH_SIZE} items for ${typeName} updateMany`,
+        createErrorContext({
+          component: 'mutation-resolver-builder',
+          metadata: {
+            typeName,
+            batchSize: input.length,
+            maxBatchSize: MAX_BATCH_SIZE,
+          },
+        }),
+      )
+    }
+
+    const updateOperations = input.map((item, index) => {
+      return withRetry(
+        async () => {
+          if (!item || typeof item !== 'object' || !('id' in item) || !('pk' in item) || !('data' in item)) {
+            throw new ValidationError(
+              `Item at index ${index} must have id, pk, and data fields for ${typeName}`,
+              createErrorContext({
+                component: 'mutation-resolver-builder',
+                metadata: { typeName, index },
+              }),
+            )
+          }
+
+          const { id, pk, data } = item
+
+          if (!id || typeof id !== 'string') {
+            throw new ValidationError(
+              `Document ID at index ${index} is required and must be a string for ${typeName} updateMany`,
+              createErrorContext({
+                component: 'mutation-resolver-builder',
+                metadata: { typeName, index, providedId: id },
+              }),
+            )
+          }
+
+          if (!pk || typeof pk !== 'string') {
+            throw new ValidationError(
+              `Partition key at index ${index} is required and must be a string for ${typeName} updateMany`,
+              createErrorContext({
+                component: 'mutation-resolver-builder',
+                metadata: { typeName, index, providedPartitionKey: pk },
+              }),
+            )
+          }
+
+          if (data === null || data === undefined || typeof data !== 'object' || Array.isArray(data)) {
+            throw new ValidationError(
+              `Update data at index ${index} must be a non-null object for ${typeName}`,
+              createErrorContext({
+                component: 'mutation-resolver-builder',
+                metadata: {
+                  typeName,
+                  index,
+                  providedType: data === null ? 'null' : Array.isArray(data) ? 'array' : typeof data,
+                },
+              }),
+            )
+          }
+
+          const inputObj = data as Record<string, unknown>
+
+          const { resource: currentDoc } = await container.item(id, pk).read()
+
+          if (!currentDoc) {
+            throw new NotFoundError({
+              message: `Document with id "${id}" not found in ${typeName} at index ${index}`,
+              context: createErrorContext({
+                component: 'mutation-resolver-builder',
+                metadata: { typeName, documentId: id, partitionKey: pk, index },
+              }),
+              metadata: { statusCode: 404 },
+            })
+          }
+
+          const updates = { ...inputObj }
+
+          for (const [key, value] of Object.entries(updates)) {
+            if (value && typeof value === 'object' && 'type' in value) {
+              const arrayOp = value as ArrayOperation
+              currentDoc[key] = applyArrayOperation({
+                currentArray: currentDoc[key] || [],
+                operation: arrayOp,
+              })
+              delete updates[key]
+            }
+          }
+
+          const updatedDoc = {
+            ...currentDoc,
+            ...updates,
+            id,
+            [partitionKeyField]: pk,
+            _updatedAt: new Date().toISOString(),
+          }
+
+          validateDocumentSize(updatedDoc, 'mutation-resolver-builder')
+
+          const accessCondition = buildAccessCondition({
+            etag: currentDoc._etag,
+            type: 'IfMatch',
+          })
+
+          const { resource, requestCharge } = await container.item(id, pk).replace(updatedDoc, {
+            accessCondition,
+          })
+
+          return {
+            data: resource,
+            etag: resource?._etag || '',
+            id,
+            requestCharge: requestCharge || 0,
+            index,
+          }
+        },
+        {
+          config: {
+            ...retry,
+            shouldRetry: (error, attempt) => {
+              if (
+                error instanceof ValidationError || error instanceof ETagMismatchError || error instanceof NotFoundError
+              ) {
+                return false
+              }
+
+              if (retry?.shouldRetry) {
+                return retry.shouldRetry(error, attempt)
+              }
+
+              return undefined as unknown as boolean
+            },
+          },
+          component: 'mutation-resolver-builder',
+          operation: 'update-many-mutation',
+        },
+      ).catch((error) => ({ error, id: item.id, index }))
+    })
+
+    const results = await Promise.allSettled(updateOperations)
+
+    const succeeded: Array<{ data: unknown; etag: string; id: string }> = []
+    const failed: Array<{ id: string; error: string; index: number }> = []
+    let totalRequestCharge = 0
+
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i]
+
+      if (result.status === 'fulfilled') {
+        const value = result.value
+        if ('error' in value) {
+          failed.push({
+            id: value.id,
+            error: value.error instanceof Error ? value.error.message : String(value.error),
+            index: i,
+          })
+        } else {
+          succeeded.push({
+            data: value.data,
+            etag: value.etag,
+            id: value.id,
+          })
+          totalRequestCharge += value.requestCharge
+        }
+      } else {
+        failed.push({
+          id: input[i].id,
+          error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+          index: i,
+        })
+      }
+    }
+
+    return {
+      succeeded,
+      failed,
+      totalRequestCharge,
+    }
+  }
+}
+
+/**
+ * Parameters for building a DELETE MANY mutation resolver
+ */
+export type BuildDeleteManyResolverParams = {
+  /** CosmosDB container instance */
+  container: Container
+  /** GraphQL type name */
+  typeName: string
+  /** Operation configuration for filtering enabled operations */
+  operationConfig?: OperationConfig
+  /** Retry configuration for rate limiting and transient errors */
+  retry?: RetryConfig
+}
+
+/**
+ * Build DELETE MANY mutation resolver for CosmosDB container
+ *
+ * Creates a GraphQL mutation resolver that:
+ * - Accepts array of document references (id, pk)
+ * - Deletes multiple documents in parallel using Promise.allSettled
+ * - Uses existing DELETE logic (hard delete)
+ * - Tracks succeeded vs failed deletes
+ * - Returns BatchDeleteResult with succeeded/failed arrays and total RU cost
+ *
+ * Returns null if DELETE MANY operation is disabled in operation config.
+ *
+ * @param params - Resolver building parameters
+ * @returns Mutation resolver function or null if operation disabled
+ *
+ * @example
+ * ```ts
+ * const deleteManyResolver = buildDeleteManyResolver({
+ *   container: cosmosContainer,
+ *   typeName: 'User',
+ *   operationConfig: { include: ['deleteMany', 'read'] }
+ * });
+ * ```
+ */
+export function buildDeleteManyResolver({
+  container,
+  typeName,
+  operationConfig,
+  retry,
+}: BuildDeleteManyResolverParams):
+  | ((_parent: unknown, args: {
+    input: Array<{ id: string; pk: string }>
+  }) => Promise<BatchDeleteResult>)
+  | null {
+  if (operationConfig && !isOperationEnabled('deleteMany', operationConfig)) {
+    return null
+  }
+
+  return async (_parent: unknown, args: { input: Array<{ id: string; pk: string }> }) => {
+    const { input } = args
+
+    if (!Array.isArray(input)) {
+      throw new ValidationError(
+        `Input for ${typeName} deleteMany must be an array`,
+        createErrorContext({
+          component: 'mutation-resolver-builder',
+          metadata: {
+            typeName,
+            providedType: input === null ? 'null' : typeof input,
+          },
+        }),
+      )
+    }
+
+    if (input.length === 0) {
+      return {
+        succeeded: [],
+        failed: [],
+        totalRequestCharge: 0,
+      }
+    }
+
+    if (input.length > MAX_BATCH_SIZE) {
+      throw new ValidationError(
+        `Batch size exceeds maximum of ${MAX_BATCH_SIZE} items for ${typeName} deleteMany`,
+        createErrorContext({
+          component: 'mutation-resolver-builder',
+          metadata: {
+            typeName,
+            batchSize: input.length,
+            maxBatchSize: MAX_BATCH_SIZE,
+          },
+        }),
+      )
+    }
+
+    const deleteOperations = input.map((item, index) => {
+      return withRetry(
+        async () => {
+          if (!item || typeof item !== 'object' || !('id' in item) || !('pk' in item)) {
+            throw new ValidationError(
+              `Item at index ${index} must have id and pk fields for ${typeName}`,
+              createErrorContext({
+                component: 'mutation-resolver-builder',
+                metadata: { typeName, index },
+              }),
+            )
+          }
+
+          const { id, pk } = item
+
+          validateDeleteInput({ id, partitionKey: pk })
+
+          const response = await container.item(id, pk).delete()
+
+          return {
+            deletedId: id,
+            requestCharge: response.requestCharge || 0,
+            index,
+          }
+        },
+        {
+          config: {
+            ...retry,
+            shouldRetry: (error, attempt) => {
+              if (error && typeof error === 'object' && 'code' in error && error.code === 404) {
+                return false
+              }
+
+              if (
+                error instanceof ValidationError || error instanceof ETagMismatchError || error instanceof NotFoundError
+              ) {
+                return false
+              }
+
+              if (retry?.shouldRetry) {
+                return retry.shouldRetry(error, attempt)
+              }
+
+              return undefined as unknown as boolean
+            },
+          },
+          component: 'mutation-resolver-builder',
+          operation: 'delete-many-mutation',
+        },
+      ).catch((error) => ({ error, id: item.id, index }))
+    })
+
+    const results = await Promise.allSettled(deleteOperations)
+
+    const succeeded: Array<{ deletedId: string }> = []
+    const failed: Array<{ id: string; error: string; index: number }> = []
+    let totalRequestCharge = 0
+
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i]
+
+      if (result.status === 'fulfilled') {
+        const value = result.value
+        if ('error' in value) {
+          failed.push({
+            id: value.id,
+            error: value.error instanceof Error ? value.error.message : String(value.error),
+            index: i,
+          })
+        } else {
+          succeeded.push({
+            deletedId: value.deletedId,
+          })
+          totalRequestCharge += value.requestCharge
+        }
+      } else {
+        failed.push({
+          id: input[i].id,
+          error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+          index: i,
+        })
+      }
+    }
+
+    return {
+      succeeded,
+      failed,
+      totalRequestCharge,
+    }
+  }
+}
+
+/**
+ * Parameters for building a RESTORE mutation resolver
+ */
+export type BuildRestoreResolverParams = {
+  /** CosmosDB container instance */
+  container: Container
+  /** GraphQL type name */
+  typeName: string
+  /** Operation configuration for filtering enabled operations */
+  operationConfig?: OperationConfig
+  /** Retry configuration for rate limiting and transient errors */
+  retry?: RetryConfig
+}
+
+/**
+ * Build RESTORE mutation resolver for CosmosDB container
+ *
+ * Creates a GraphQL mutation resolver that:
+ * - Reverses soft delete by clearing soft delete metadata
+ * - Validates document exists and is currently soft-deleted
+ * - Clears _deleted, _deletedAt, _deletedBy, _deleteReason fields
+ * - Sets _restoredAt timestamp
+ * - Updates _updatedAt timestamp
+ * - Validates ETag for optimistic concurrency control (optional)
+ * - Returns RestorePayload with data, etag, requestCharge, and restoredAt
+ *
+ * Returns null if RESTORE operation is disabled in operation config.
+ *
+ * @param params - Resolver building parameters
+ * @returns Mutation resolver function or null if operation disabled
+ *
+ * @example
+ * ```ts
+ * const restoreResolver = buildRestoreResolver({
+ *   container: cosmosContainer,
+ *   typeName: 'User',
+ *   operationConfig: { include: ['restore', 'read'] }
+ * });
+ * ```
+ */
+export function buildRestoreResolver({
+  container,
+  typeName,
+  operationConfig,
+  retry,
+}: BuildRestoreResolverParams):
+  | ((_parent: unknown, args: {
+    id: string
+    pk: string
+    etag?: string
+  }) => Promise<RestorePayload<unknown>>)
+  | null {
+  if (operationConfig && !isOperationEnabled('restore', operationConfig)) {
+    return null
+  }
+
+  return async (_parent: unknown, args: { id: string; pk: string; etag?: string }) => {
+    const { id, pk, etag } = args
+
+    if (!id || typeof id !== 'string') {
+      throw new ValidationError(
+        `Document ID is required and must be a string for ${typeName} restore`,
+        createErrorContext({
+          component: 'mutation-resolver-builder',
+          metadata: { typeName, providedId: id },
+        }),
+      )
+    }
+
+    if (!pk || typeof pk !== 'string') {
+      throw new ValidationError(
+        `Partition key is required and must be a string for ${typeName} restore`,
+        createErrorContext({
+          component: 'mutation-resolver-builder',
+          metadata: { typeName, providedPartitionKey: pk },
+        }),
+      )
+    }
+
+    return await withRetry(
+      async () => {
+        const { resource: currentDoc } = await container.item(id, pk).read()
+
+        if (!currentDoc) {
+          throw new NotFoundError({
+            message: `Document with id "${id}" not found in ${typeName}`,
+            context: createErrorContext({
+              component: 'mutation-resolver-builder',
+              metadata: { typeName, documentId: id, partitionKey: pk },
+            }),
+            metadata: { statusCode: 404 },
+          })
+        }
+
+        if (currentDoc._deleted !== true) {
+          throw new ValidationError(
+            `Document "${id}" is not soft-deleted and cannot be restored`,
+            createErrorContext({
+              component: 'mutation-resolver-builder',
+              metadata: {
+                typeName,
+                documentId: id,
+                deletedStatus: currentDoc._deleted,
+              },
+            }),
+          )
+        }
+
+        if (etag && !checkETagMatch({ providedEtag: etag, currentEtag: currentDoc._etag })) {
+          throw new ETagMismatchError({
+            message: `ETag mismatch for ${typeName} document "${id}". Document has been modified.`,
+            context: createErrorContext({
+              component: 'mutation-resolver-builder',
+              metadata: { typeName, documentId: id, partitionKey: pk },
+            }),
+            providedEtag: etag,
+            currentEtag: currentDoc._etag,
+            documentId: id,
+            currentDocument: currentDoc,
+          })
+        }
+
+        const now = new Date().toISOString()
+        const restoredDoc = {
+          ...currentDoc,
+          _deleted: false,
+          _deletedAt: null,
+          _deletedBy: null,
+          _deleteReason: null,
+          _restoredAt: now,
+          _updatedAt: now,
+        }
+
+        const accessCondition = buildAccessCondition({
+          etag: currentDoc._etag,
+          type: 'IfMatch',
+        })
+
+        const { resource, requestCharge } = await container.item(id, pk).replace(restoredDoc, {
+          accessCondition,
+        })
+
+        const result: RestorePayload<unknown> = {
+          data: resource,
+          etag: resource?._etag || '',
+          requestCharge: requestCharge || 0,
+          restoredAt: now,
+        }
+
+        return result
+      },
+      {
+        config: {
+          ...retry,
+          shouldRetry: (error, attempt) => {
+            if (
+              error instanceof ValidationError || error instanceof ETagMismatchError || error instanceof NotFoundError
+            ) {
+              return false
+            }
+
+            if (retry?.shouldRetry) {
+              return retry.shouldRetry(error, attempt)
+            }
+
+            return undefined as unknown as boolean
+          },
+        },
+        component: 'mutation-resolver-builder',
+        operation: 'restore-mutation',
       },
     )
   }

@@ -38,6 +38,8 @@ export type BuildResolversOptions = {
   schema?: InferredSchema
   /** Retry configuration for rate limiting and transient errors */
   retry?: RetryConfig
+  /** Require partition key on list queries (default: false) */
+  requirePartitionKeyOnQueries?: boolean
 }
 
 /**
@@ -65,6 +67,7 @@ export function buildResolvers({
   typeName,
   schema,
   retry,
+  requirePartitionKeyOnQueries = false,
 }: BuildResolversOptions): Resolvers {
   const typeNameLower = typeName.toLowerCase()
   const typeNamePlural = `${typeNameLower}s`
@@ -153,7 +156,7 @@ export function buildResolvers({
       // List query with pagination, filtering, and sorting
       [typeNamePlural]: async (_source, args) => {
         const filters = args as QueryFilters
-        return await executeListQuery({ container, filters, retry })
+        return await executeListQuery({ container, filters, retry, typeName, requirePartitionKeyOnQueries })
       },
     },
   }
@@ -204,10 +207,14 @@ async function executeListQuery({
   container,
   filters,
   retry,
+  typeName,
+  requirePartitionKeyOnQueries = false,
 }: {
   container: Container
   filters: QueryFilters & { where?: WhereFilter }
   retry?: RetryConfig
+  typeName: string
+  requirePartitionKeyOnQueries?: boolean
 }): Promise<ConnectionResult<unknown>> {
   return await withRetry(
     async () => {
@@ -223,6 +230,21 @@ async function executeListQuery({
         filters.orderDirection,
         'resolver-builder',
       )
+
+      // Enforce partition key requirement if configured
+      if (requirePartitionKeyOnQueries && !validatedPartitionKey) {
+        throw new InvalidFilterError({
+          message: `Partition key is required for ${typeName} list queries`,
+          context: createErrorContext({
+            component: 'resolver-builder',
+            metadata: {
+              typeName,
+              hint: 'Set requirePartitionKeyOnQueries: false in container config to allow cross-partition queries',
+            },
+          }),
+          field: 'partitionKey',
+        })
+      }
 
       // Build WHERE clause from filters
       const { whereClause, parameters } = filters.where
