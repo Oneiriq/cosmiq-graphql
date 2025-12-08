@@ -70,7 +70,7 @@ Deno.test('resolveOperationConfig - global config only', () => {
 Deno.test('resolveOperationConfig - defaults when no config provided', () => {
   const resolved = resolveOperationConfig({})
 
-  assertEquals(resolved.include, ['read'])
+  assertEquals(resolved.include, ['read', 'create', 'update', 'delete'])
 })
 
 Deno.test('resolveOperationConfig - exclude at container level', () => {

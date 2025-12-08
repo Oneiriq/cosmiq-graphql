@@ -22,7 +22,7 @@ const VALID_OPERATIONS: ReadonlySet<CRUDOperation> = new Set([
   'decrement',
 ])
 
-const DEFAULT_OPERATIONS: CRUDOperation[] = ['read']
+const DEFAULT_OPERATIONS: CRUDOperation[] = ['read', 'create', 'update', 'delete']
 
 /**
  * Resolve the final operation configuration for a specific type
@@ -207,8 +207,12 @@ export function getResolverName(
  */
 export function isOperationEnabled(
   operation: CRUDOperation,
-  config: OperationConfig,
+  config?: OperationConfig,
 ): boolean {
+  if (!config) {
+    return DEFAULT_OPERATIONS.includes(operation)
+  }
+
   if (config.exclude?.includes(operation)) {
     return false
   }

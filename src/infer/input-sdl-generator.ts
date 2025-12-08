@@ -141,10 +141,16 @@ export function generateCreateInputSDL({
   const parts: string[] = []
 
   for (const nestedType of nestedInputTypes) {
-    parts.push(formatInputTypeDefinition(nestedType))
+    const formatted = formatInputTypeDefinition(nestedType)
+    if (formatted) {
+      parts.push(formatted)
+    }
   }
 
-  parts.push(formatInputTypeDefinition(rootInputType))
+  const rootFormatted = formatInputTypeDefinition(rootInputType)
+  if (rootFormatted) {
+    parts.push(rootFormatted)
+  }
 
   return parts.join('\n\n')
 }
@@ -369,10 +375,16 @@ export function generateUpdateInputSDL({
   const parts: string[] = []
 
   for (const nestedType of nestedInputTypes) {
-    parts.push(formatInputTypeDefinition(nestedType))
+    const formatted = formatInputTypeDefinition(nestedType)
+    if (formatted) {
+      parts.push(formatted)
+    }
   }
 
-  parts.push(formatInputTypeDefinition(rootInputType))
+  const rootFormatted = formatInputTypeDefinition(rootInputType)
+  if (rootFormatted) {
+    parts.push(rootFormatted)
+  }
 
   return parts.join('\n\n')
 }
@@ -577,10 +589,16 @@ export function generateUpsertInputSDL({
   const parts: string[] = []
 
   for (const nestedType of nestedInputTypes) {
-    parts.push(formatInputTypeDefinition(nestedType))
+    const formatted = formatInputTypeDefinition(nestedType)
+    if (formatted) {
+      parts.push(formatted)
+    }
   }
 
-  parts.push(formatInputTypeDefinition(rootInputType))
+  const rootFormatted = formatInputTypeDefinition(rootInputType)
+  if (rootFormatted) {
+    parts.push(rootFormatted)
+  }
 
   return parts.join('\n\n')
 }
@@ -1412,6 +1430,14 @@ type Restore${typeName}Payload {
  * @internal
  */
 function formatInputTypeDefinition(inputType: InputTypeDefinition): string {
+  // Skip empty input types to avoid GraphQL syntax errors
+  if (inputType.fields.length === 0) {
+    console.warn(
+      `[cosmiq-graphql] Skipping empty input type '${inputType.name}' - no fields after filtering system fields`,
+    )
+    return ''
+  }
+
   const lines: string[] = []
 
   lines.push(`input ${inputType.name} {`)

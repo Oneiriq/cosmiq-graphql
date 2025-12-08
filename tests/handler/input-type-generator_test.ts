@@ -93,7 +93,7 @@ describe('generateInputTypes', () => {
     assertEquals(result.rootInputType.fields.length, 2)
     assertEquals(result.nestedInputTypes.length, 1)
     assertEquals(result.nestedInputTypes[0].name, 'FileMetadataInput')
-    assertEquals(result.nestedInputTypes[0].fields.length, 0)
+    assertEquals(result.nestedInputTypes[0].fields.length, 2)
   })
 
   it('should handle array fields', () => {
