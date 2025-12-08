@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.6.9] - 2025-12-07
+
+### Fixed
+
+- Default operations not being set in `core.ts` when no CRUD config provided
+- Resolvers not getting generated for operations
+
 ## [v0.6.8] - 2025-12-07
 
 ### Added
