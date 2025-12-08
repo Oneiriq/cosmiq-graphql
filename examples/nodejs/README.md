@@ -92,6 +92,25 @@ All four examples mirror the Deno implementations:
 - Integration with custom tooling
 - Automated documentation pipelines
 
+### 5. Custom Resolver Customization ([`custom-resolvers.ts`](./custom-resolvers.ts))
+
+**Purpose:** Shows how to extend auto-generated resolvers with custom business logic
+
+**Key Features:**
+
+- Wrapping base resolvers with logging and side effects
+- Adding custom query resolvers
+- Creating computed fields
+- Cross-container data aggregation
+
+**Use Cases:**
+
+- Adding business logic on top of CRUD operations
+- Implementing audit logging
+- Triggering notifications and webhooks
+- Aggregating data from multiple containers
+- Creating derived/computed fields
+
 ## Adapting for Node.js
 
 To use these examples in your Node.js project, follow these steps:

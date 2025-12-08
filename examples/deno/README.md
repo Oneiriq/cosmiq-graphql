@@ -585,6 +585,68 @@ if (Deno.build.os !== 'windows') {
 Deno.addSignalListener('SIGINT', () => shutdown('SIGINT'))
 ```
 
+## Example 5: Custom Resolver Customization
+
+**File:** [`custom-resolvers.ts`](./custom-resolvers.ts)
+
+### Description
+
+Demonstrates how to extend auto-generated resolvers with custom business logic:
+
+- Wrapping base resolvers with pre/post-processing
+- Adding custom query resolvers
+- Creating computed fields
+- Implementing cross-container data aggregation
+- Triggering side effects (logging, notifications)
+
+### Running
+
+```bash
+deno task example:custom-resolvers
+```
+
+### Key Patterns Shown
+
+**1. Extending Schema:**
+```typescript
+const extendedSDL = `${adapter.sdl}
+  extend type User {
+    displayName: String!
+    stats: UserStats
+  }
+  extend type Query {
+    searchUsers(query: String!): [User!]!
+  }
+`
+```
+
+**2. Merging Resolvers:**
+```typescript
+const customResolvers = {
+  Query: {
+    ...baseResolvers.Query,
+    searchUsers: async (_parent, args) => { /* custom logic */ }
+  }
+}
+```
+
+**3. Computed Fields:**
+Derive values from existing data without storing duplicates
+
+**4. Wrapping Mutations:**
+Add logging, validation, or trigger events around base operations
+
+**5. Cross-Container Queries:**
+Aggregate data from multiple containers in field resolvers
+
+### Use Cases
+
+- Custom business logic on top of auto-generated CRUD
+- Audit logging and monitoring
+- Triggering side effects (emails, webhooks)
+- Computed/derived fields
+- Multi-container data aggregation
+
 ## Next Steps
 
 After running these examples, explore:

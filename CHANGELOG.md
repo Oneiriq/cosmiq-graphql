@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.6.11] - 2025-12-08
+
+### Added
+
+- Customer resolver documentation example in `examples/nodejs/custom-resolvers.ts` and `examples/deno/custom-resolvers.ts`
+
 ## [v0.6.10] - 2025-12-08
 
 ### Fixed

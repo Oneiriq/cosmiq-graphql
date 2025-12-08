@@ -8,7 +8,8 @@
     "example:yoga-server": "deno run --allow-net --allow-env --unsafely-ignore-certificate-errors=localhost,127.0.0.1 yoga-server.ts",
     "example:apollo-server": "deno run --allow-net --allow-env --unsafely-ignore-certificate-errors=localhost,127.0.0.1 apollo-server.ts",
     "example:sdl-spec": "deno run --allow-net --allow-env --unsafely-ignore-certificate-errors=localhost,127.0.0.1 cosmosdb-sdl-spec.ts",
-    "example:json-spec": "deno run --allow-net --allow-env --unsafely-ignore-certificate-errors=localhost,127.0.0.1 cosmosdb-json-spec.ts"
+    "example:json-spec": "deno run --allow-net --allow-env --unsafely-ignore-certificate-errors=localhost,127.0.0.1 cosmosdb-json-spec.ts",
+    "example:custom-resolvers": "deno run --allow-net --allow-env --unsafely-ignore-certificate-errors=localhost,127.0.0.1 custom-resolvers.ts"
   },
   "imports": {
     "@azure/cosmos": "npm:@azure/cosmos@^4.9.0",
