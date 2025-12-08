@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.6.8] - 2025-12-07
+
+### Added
+- Concurrency integration tests for for race condition scenarios
+
 ## [v0.6.7] - 2025-12-07
 
 ### Added
