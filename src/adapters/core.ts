@@ -14,13 +14,24 @@ import { inferSchema } from '../infer/infer-schema.ts'
 import { buildGraphQLSDL } from '../infer/sdl-generator.ts'
 import { generateCreateSDL } from '../infer/input-sdl-generator.ts'
 import { buildResolvers } from '../handler/resolver-builder.ts'
-import { buildCreateResolver } from '../handler/mutation-resolver-builder.ts'
+import {
+  buildCreateManyResolver,
+  buildCreateResolver,
+  buildDeleteManyResolver,
+  buildDeleteResolver,
+  buildReplaceResolver,
+  buildRestoreResolver,
+  buildSoftDeleteResolver,
+  buildUpdateManyResolver,
+  buildUpdateResolver,
+  buildUpsertResolver,
+} from '../handler/mutation-resolver-builder.ts'
+import { buildDecrementResolver, buildIncrementResolver } from '../handler/atomic-operations.ts'
 import { generateInputTypes } from '../handler/input-type-generator.ts'
 import { isOperationEnabled } from '../handler/operation-config-resolver.ts'
 import { createExecutableSchema } from '../handler/schema-executor.ts'
 import { ConfigurationError, createErrorContext } from '../errors/mod.ts'
 import { validateContainerConfig, validateRequiredString } from '../utils/validation.ts'
-import { SchemaCache } from '../cache/schemaCache.ts'
 
 /**
  * Container information with configuration
@@ -258,7 +269,7 @@ type ${connectionName} {
 }`)
 
     // Generate CREATE input types and mutation if enabled
-    if (info.operationConfig && isOperationEnabled('create', info.operationConfig)) {
+    if (isOperationEnabled('create', info.operationConfig)) {
       const createSDL = generateCreateSDL({
         schema: info.schema,
         typeName,
@@ -274,6 +285,197 @@ type ${connectionName} {
     input: Create${typeName}Input!
   ): Create${typeName}Payload!`)
       }
+    }
+
+    // Generate UPDATE mutation if enabled
+    if (isOperationEnabled('update', info.operationConfig)) {
+      mutationFields.push(`  """Update an existing ${typeName}"""
+  update${typeName}(
+    """Document ID"""
+    id: ID!
+    
+    """Partition key"""
+    partitionKey: String!
+    
+    """Update data (partial)"""
+    input: JSON!
+    
+    """ETag for optimistic concurrency"""
+    etag: String
+  ): Create${typeName}Payload!`)
+    }
+
+    // Generate DELETE mutation if enabled
+    if (isOperationEnabled('delete', info.operationConfig)) {
+      mutationFields.push(`  """Delete a ${typeName}"""
+  delete${typeName}(
+    """Document ID"""
+    id: ID!
+    
+    """Partition key"""
+    partitionKey: String!
+    
+    """ETag for optimistic concurrency"""
+    etag: String
+  ): Delete${typeName}Payload!`)
+    }
+
+    // Generate REPLACE mutation if enabled
+    if (isOperationEnabled('replace', info.operationConfig)) {
+      mutationFields.push(`  """Replace an existing ${typeName} (full replacement)"""
+  replace${typeName}(
+    """Document ID"""
+    id: ID!
+    
+    """Partition key"""
+    partitionKey: String!
+    
+    """Replacement data (complete document)"""
+    input: JSON!
+    
+    """ETag for optimistic concurrency"""
+    etag: String
+  ): Create${typeName}Payload!`)
+    }
+
+    // Generate UPSERT mutation if enabled
+    if (isOperationEnabled('upsert', info.operationConfig)) {
+      const createSDL = generateCreateSDL({
+        schema: info.schema,
+        typeName,
+        operationConfig: info.operationConfig,
+      })
+
+      if (createSDL && !inputSDLFragments.includes(createSDL)) {
+        inputSDLFragments.push(createSDL)
+      }
+
+      mutationFields.push(`  """Upsert a ${typeName} (create or update)"""
+  upsert${typeName}(
+    """Document ID"""
+    id: ID!
+    
+    """Partition key"""
+    partitionKey: String!
+    
+    """Input data for upsert"""
+    input: Create${typeName}Input!
+  ): Upsert${typeName}Payload!`)
+    }
+
+    // Generate SOFT_DELETE mutation if enabled
+    if (isOperationEnabled('softDelete', info.operationConfig)) {
+      mutationFields.push(`  """Soft delete a ${typeName} (mark as deleted)"""
+  softDelete${typeName}(
+    """Document ID"""
+    id: ID!
+    
+    """Partition key"""
+    partitionKey: String!
+    
+    """ETag for optimistic concurrency"""
+    etag: String
+    
+    """Reason for deletion"""
+    deleteReason: String
+    
+    """User who deleted the document"""
+    deletedBy: String
+  ): SoftDelete${typeName}Payload!`)
+    }
+
+    // Generate RESTORE mutation if enabled
+    if (isOperationEnabled('restore', info.operationConfig)) {
+      mutationFields.push(`  """Restore a soft-deleted ${typeName}"""
+  restore${typeName}(
+    """Document ID"""
+    id: ID!
+    
+    """Partition key"""
+    pk: String!
+    
+    """ETag for optimistic concurrency"""
+    etag: String
+  ): Restore${typeName}Payload!`)
+    }
+
+    // Generate CREATE_MANY mutation if enabled
+    if (isOperationEnabled('createMany', info.operationConfig)) {
+      const createSDL = generateCreateSDL({
+        schema: info.schema,
+        typeName,
+        operationConfig: info.operationConfig,
+      })
+
+      if (createSDL && !inputSDLFragments.includes(createSDL)) {
+        inputSDLFragments.push(createSDL)
+      }
+
+      mutationFields.push(`  """Create multiple ${typeName}s"""
+  createMany${typeName}s(
+    """Array of input data"""
+    input: [Create${typeName}Input!]!
+  ): CreateMany${typeName}sPayload!`)
+    }
+
+    // Generate UPDATE_MANY mutation if enabled
+    if (isOperationEnabled('updateMany', info.operationConfig)) {
+      mutationFields.push(`  """Update multiple ${typeName}s"""
+  updateMany${typeName}s(
+    """Array of update operations"""
+    input: [UpdateMany${typeName}Input!]!
+  ): UpdateMany${typeName}sPayload!`)
+    }
+
+    // Generate DELETE_MANY mutation if enabled
+    if (isOperationEnabled('deleteMany', info.operationConfig)) {
+      mutationFields.push(`  """Delete multiple ${typeName}s"""
+  deleteMany${typeName}s(
+    """Array of document references"""
+    input: [DeleteMany${typeName}Input!]!
+  ): DeleteMany${typeName}sPayload!`)
+    }
+
+    // Generate INCREMENT mutation if enabled
+    if (isOperationEnabled('increment', info.operationConfig)) {
+      mutationFields.push(`  """Atomically increment a numeric field in ${typeName}"""
+  increment${typeName}(
+    """Document ID"""
+    id: ID!
+    
+    """Partition key"""
+    pk: String!
+    
+    """Field name to increment"""
+    field: String!
+    
+    """Amount to increment by (default: 1)"""
+    by: Float = 1
+    
+    """ETag for optimistic concurrency"""
+    etag: String
+  ): AtomicNumeric${typeName}Result!`)
+    }
+
+    // Generate DECREMENT mutation if enabled
+    if (isOperationEnabled('decrement', info.operationConfig)) {
+      mutationFields.push(`  """Atomically decrement a numeric field in ${typeName}"""
+  decrement${typeName}(
+    """Document ID"""
+    id: ID!
+    
+    """Partition key"""
+    pk: String!
+    
+    """Field name to decrement"""
+    field: String!
+    
+    """Amount to decrement by (default: 1)"""
+    by: Float = 1
+    
+    """ETag for optimistic concurrency"""
+    etag: String
+  ): AtomicNumeric${typeName}Result!`)
     }
   }
 
@@ -349,7 +551,7 @@ async function buildMultiContainerResolvers({
     }
 
     // Build CREATE mutation resolver if enabled
-    if (info.operationConfig && isOperationEnabled('create', info.operationConfig)) {
+    if (isOperationEnabled('create', info.operationConfig)) {
       const inputTypesResult = generateInputTypes({
         schema: info.schema,
         rootInputTypeName: `Create${info.typeName}Input`,
@@ -369,6 +571,210 @@ async function buildMultiContainerResolvers({
           resolvers.Mutation = {}
         }
         resolvers.Mutation[`create${info.typeName}`] = createResolver as ResolverFn
+      }
+    }
+
+    // Build UPDATE mutation resolver if enabled
+    if (isOperationEnabled('update', info.operationConfig)) {
+      const updateResolver = buildUpdateResolver({
+        container: info.container,
+        typeName: info.typeName,
+        partitionKeyPath: info.partitionKeyPath,
+        operationConfig: info.operationConfig,
+        retry,
+      })
+
+      if (updateResolver) {
+        if (!resolvers.Mutation) {
+          resolvers.Mutation = {}
+        }
+        resolvers.Mutation[`update${info.typeName}`] = updateResolver as ResolverFn
+      }
+    }
+
+    // Build DELETE mutation resolver if enabled
+    if (isOperationEnabled('delete', info.operationConfig)) {
+      const deleteResolver = buildDeleteResolver({
+        container: info.container,
+        typeName: info.typeName,
+        operationConfig: info.operationConfig,
+        retry,
+      })
+
+      if (deleteResolver) {
+        if (!resolvers.Mutation) {
+          resolvers.Mutation = {}
+        }
+        resolvers.Mutation[`delete${info.typeName}`] = deleteResolver as ResolverFn
+      }
+    }
+
+    // Build REPLACE mutation resolver if enabled
+    if (isOperationEnabled('replace', info.operationConfig)) {
+      const replaceResolver = buildReplaceResolver({
+        container: info.container,
+        typeName: info.typeName,
+        partitionKeyPath: info.partitionKeyPath,
+        operationConfig: info.operationConfig,
+        retry,
+      })
+
+      if (replaceResolver) {
+        if (!resolvers.Mutation) {
+          resolvers.Mutation = {}
+        }
+        resolvers.Mutation[`replace${info.typeName}`] = replaceResolver as ResolverFn
+      }
+    }
+
+    // Build UPSERT mutation resolver if enabled
+    if (isOperationEnabled('upsert', info.operationConfig)) {
+      const inputTypesResult = generateInputTypes({
+        schema: info.schema,
+        rootInputTypeName: `Create${info.typeName}Input`,
+      })
+
+      const upsertResolver = buildUpsertResolver({
+        container: info.container,
+        typeName: info.typeName,
+        partitionKeyPath: info.partitionKeyPath,
+        operationConfig: info.operationConfig,
+        inputTypeDef: inputTypesResult.rootInputType,
+        retry,
+      })
+
+      if (upsertResolver) {
+        if (!resolvers.Mutation) {
+          resolvers.Mutation = {}
+        }
+        resolvers.Mutation[`upsert${info.typeName}`] = upsertResolver as ResolverFn
+      }
+    }
+
+    // Build SOFT_DELETE mutation resolver if enabled
+    if (isOperationEnabled('softDelete', info.operationConfig)) {
+      const softDeleteResolver = buildSoftDeleteResolver({
+        container: info.container,
+        typeName: info.typeName,
+        operationConfig: info.operationConfig,
+        retry,
+      })
+
+      if (softDeleteResolver) {
+        if (!resolvers.Mutation) {
+          resolvers.Mutation = {}
+        }
+        resolvers.Mutation[`softDelete${info.typeName}`] = softDeleteResolver as ResolverFn
+      }
+    }
+
+    // Build RESTORE mutation resolver if enabled
+    if (isOperationEnabled('restore', info.operationConfig)) {
+      const restoreResolver = buildRestoreResolver({
+        container: info.container,
+        typeName: info.typeName,
+        operationConfig: info.operationConfig,
+        retry,
+      })
+
+      if (restoreResolver) {
+        if (!resolvers.Mutation) {
+          resolvers.Mutation = {}
+        }
+        resolvers.Mutation[`restore${info.typeName}`] = restoreResolver as ResolverFn
+      }
+    }
+
+    // Build CREATE_MANY mutation resolver if enabled
+    if (isOperationEnabled('createMany', info.operationConfig)) {
+      const inputTypesResult = generateInputTypes({
+        schema: info.schema,
+        rootInputTypeName: `Create${info.typeName}Input`,
+      })
+
+      const createManyResolver = buildCreateManyResolver({
+        container: info.container,
+        typeName: info.typeName,
+        partitionKeyPath: info.partitionKeyPath,
+        operationConfig: info.operationConfig,
+        inputTypeDef: inputTypesResult.rootInputType,
+        retry,
+      })
+
+      if (createManyResolver) {
+        if (!resolvers.Mutation) {
+          resolvers.Mutation = {}
+        }
+        resolvers.Mutation[`createMany${info.typeName}s`] = createManyResolver as ResolverFn
+      }
+    }
+
+    // Build UPDATE_MANY mutation resolver if enabled
+    if (isOperationEnabled('updateMany', info.operationConfig)) {
+      const updateManyResolver = buildUpdateManyResolver({
+        container: info.container,
+        typeName: info.typeName,
+        partitionKeyPath: info.partitionKeyPath,
+        operationConfig: info.operationConfig,
+        retry,
+      })
+
+      if (updateManyResolver) {
+        if (!resolvers.Mutation) {
+          resolvers.Mutation = {}
+        }
+        resolvers.Mutation[`updateMany${info.typeName}s`] = updateManyResolver as ResolverFn
+      }
+    }
+
+    // Build DELETE_MANY mutation resolver if enabled
+    if (isOperationEnabled('deleteMany', info.operationConfig)) {
+      const deleteManyResolver = buildDeleteManyResolver({
+        container: info.container,
+        typeName: info.typeName,
+        operationConfig: info.operationConfig,
+        retry,
+      })
+
+      if (deleteManyResolver) {
+        if (!resolvers.Mutation) {
+          resolvers.Mutation = {}
+        }
+        resolvers.Mutation[`deleteMany${info.typeName}s`] = deleteManyResolver as ResolverFn
+      }
+    }
+
+    // Build INCREMENT mutation resolver if enabled
+    if (isOperationEnabled('increment', info.operationConfig)) {
+      const incrementResolver = buildIncrementResolver({
+        container: info.container,
+        typeName: info.typeName,
+        operationConfig: info.operationConfig,
+        retry,
+      })
+
+      if (incrementResolver) {
+        if (!resolvers.Mutation) {
+          resolvers.Mutation = {}
+        }
+        resolvers.Mutation[`increment${info.typeName}`] = incrementResolver as ResolverFn
+      }
+    }
+
+    // Build DECREMENT mutation resolver if enabled
+    if (isOperationEnabled('decrement', info.operationConfig)) {
+      const decrementResolver = buildDecrementResolver({
+        container: info.container,
+        typeName: info.typeName,
+        operationConfig: info.operationConfig,
+        retry,
+      })
+
+      if (decrementResolver) {
+        if (!resolvers.Mutation) {
+          resolvers.Mutation = {}
+        }
+        resolvers.Mutation[`decrement${info.typeName}`] = decrementResolver as ResolverFn
       }
     }
   }
@@ -509,7 +915,6 @@ function createCosmosClient(config: CosmosDBSubgraphConfig): CosmosClient {
 export async function buildCoreSchema(
   config: CosmosDBSubgraphConfig,
   onProgress?: ProgressCallback,
-  _cache?: SchemaCache,
   subgraphName?: string,
 ): Promise<CoreSchemaResult> {
   // Validate configuration

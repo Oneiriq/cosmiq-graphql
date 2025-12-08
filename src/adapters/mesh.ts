@@ -144,7 +144,7 @@ export function loadCosmosDBSubgraph(
   // Return a FUNCTION (NOT async) that returns the handler object with schema$ promise
   const handler = () => {
     const schema$: Promise<ReturnType<typeof import('@graphql-tools/schema').makeExecutableSchema>> = (async () => {
-      const result = await buildCoreSchema(config, onProgress, undefined, subgraphName)
+      const result = await buildCoreSchema(config, onProgress, subgraphName)
 
       // Register client for lifecycle management
       if (clientKey) {

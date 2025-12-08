@@ -158,6 +158,9 @@ async function loadExistingData(): Promise<ExistingData> {
  * @param data - Seed data containing users, listings, and files
  */
 async function writeJsonFiles(data: SeedData): Promise<void> {
+  // Ensure data directory exists
+  await Deno.mkdir(DATA_DIR, { recursive: true })
+
   // Combine with new data (avoiding duplicates)
   const allUsers: UserDocument[] = []
   const allListings: ListingDocument[] = []
@@ -361,7 +364,7 @@ async function insertDocument({
 
   try {
     const { resource } = await container.items.upsert(document)
-    return resource
+    return resource ?? null
   } catch (error: unknown) {
     const err = error as { code?: number; message?: string; constructor?: { name?: string } }
     if (err.code === 409) {
