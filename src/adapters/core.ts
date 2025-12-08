@@ -213,6 +213,7 @@ function buildMultiContainerSDL({
   const mutationFields: string[] = []
   const connectionTypes: string[] = []
   const inputSDLFragments: string[] = []
+  const payloadTypes: string[] = []
 
   for (const info of containerInfos) {
     // Generate SDL without Query type (we'll merge queries separately)
@@ -307,6 +308,18 @@ type ${connectionName} {
 
     // Generate DELETE mutation if enabled
     if (isOperationEnabled('delete', info.operationConfig)) {
+      payloadTypes.push(`"""Payload returned from delete ${typeName} operation"""
+type Delete${typeName}Payload {
+  """Whether deletion was successful"""
+  success: Boolean!
+  
+  """ID of the deleted document"""
+  deletedId: String!
+  
+  """Request charge in RUs"""
+  requestCharge: Float!
+}`)
+
       mutationFields.push(`  """Delete a ${typeName}"""
   delete${typeName}(
     """Document ID"""
@@ -350,6 +363,21 @@ type ${connectionName} {
         inputSDLFragments.push(createSDL)
       }
 
+      payloadTypes.push(`"""Payload returned from upsert ${typeName} operation"""
+type Upsert${typeName}Payload {
+  """The created or updated document"""
+  data: ${typeName}!
+  
+  """ETag for optimistic concurrency control"""
+  etag: String!
+  
+  """Request charge in RUs"""
+  requestCharge: Float!
+  
+  """Whether document was created (true) or updated (false)"""
+  wasCreated: Boolean!
+}`)
+
       mutationFields.push(`  """Upsert a ${typeName} (create or update)"""
   upsert${typeName}(
     """Document ID"""
@@ -365,6 +393,21 @@ type ${connectionName} {
 
     // Generate SOFT_DELETE mutation if enabled
     if (isOperationEnabled('softDelete', info.operationConfig)) {
+      payloadTypes.push(`"""Payload returned from soft delete ${typeName} operation"""
+type SoftDelete${typeName}Payload {
+  """Whether soft deletion was successful"""
+  success: Boolean!
+  
+  """ID of the soft deleted document"""
+  deletedId: String!
+  
+  """ETag of the updated document"""
+  etag: String!
+  
+  """Request charge in RUs"""
+  requestCharge: Float!
+}`)
+
       mutationFields.push(`  """Soft delete a ${typeName} (mark as deleted)"""
   softDelete${typeName}(
     """Document ID"""
@@ -504,13 +547,20 @@ enum OrderDirection {
   DESC
 }`
 
+  // JSON scalar definition
+  const jsonScalar = `"""JSON scalar type for flexible data"""
+scalar JSON`
+
   // Merge input SDL if any
   const inputSDL = inputSDLFragments.length > 0 ? `\n\n${inputSDLFragments.join('\n\n')}` : ''
 
+  // Merge payload types if any
+  const payloadSDL = payloadTypes.length > 0 ? `\n\n${payloadTypes.join('\n\n')}` : ''
+
   // Combine all parts
-  return `${mergedTypes}\n\n${queryType}${mutationType}\n\n${orderDirectionEnum}\n\n${
+  return `${jsonScalar}\n\n${mergedTypes}\n\n${queryType}${mutationType}\n\n${orderDirectionEnum}\n\n${
     connectionTypes.join('\n\n')
-  }${inputSDL}`
+  }${inputSDL}${payloadSDL}`
 }
 
 /**

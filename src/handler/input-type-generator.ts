@@ -82,20 +82,22 @@ export function generateInputTypes({
   }
 
   for (const nestedType of schema.nestedTypes) {
-    if (!processedNestedTypes.has(nestedType.name)) {
-      const inputTypeName = `${nestedType.name}Input`
-      const nestedFields = convertFieldsToInput({
-        fields: nestedType.fields,
-        excludeFields: allExcludedFields,
-        nestedInputTypes,
-        processedNestedTypes,
-      })
+    const inputTypeName = `${nestedType.name}Input`
+    const nestedFields = convertFieldsToInput({
+      fields: nestedType.fields,
+      excludeFields: allExcludedFields,
+      nestedInputTypes,
+      processedNestedTypes,
+    })
 
+    const existingPlaceholder = processedNestedTypes.get(nestedType.name)
+    if (existingPlaceholder) {
+      existingPlaceholder.fields = nestedFields
+    } else {
       const nestedInputType: InputTypeDefinition = {
         name: inputTypeName,
         fields: nestedFields,
       }
-
       processedNestedTypes.set(nestedType.name, nestedInputType)
       nestedInputTypes.push(nestedInputType)
     }

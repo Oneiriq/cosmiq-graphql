@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.6.10] - 2025-12-08
+
+### Fixed
+
+- Bug in input type and sdl generators causing incorrect input types for nested objects
+
 ## [v0.6.9] - 2025-12-07
 
 ### Fixed
