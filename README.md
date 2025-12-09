@@ -139,7 +139,7 @@ mutation {
 
 ## Examples
 
-See [`examples/deno/README.md`](./examples/deno/README.md) and [`examples/node/README.md`](./examples/node/README.md) for detailed setup instructions, configuration options, troubleshooting, and example queries.
+See the deno and the nodejs examples for detailed setup instructions, configuration options, and example queries.
 
 ## CosmosDB Considerations
 
