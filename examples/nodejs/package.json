@@ -6,11 +6,9 @@
   "author": "Shon Thomas",
   "type": "module",
   "scripts": {
-    "example:yoga-server": "cross-env NODE_TLS_REJECT_UNAUTHORIZED=0 tsx yoga-server.ts",
-    "example:apollo-server": "cross-env NODE_TLS_REJECT_UNAUTHORIZED=0 tsx apollo-server.ts",
-    "example:sdl-spec": "cross-env NODE_TLS_REJECT_UNAUTHORIZED=0 tsx cosmosdb-sdl-spec.ts",
-    "example:json-spec": "cross-env NODE_TLS_REJECT_UNAUTHORIZED=0 tsx cosmosdb-json-spec.ts",
-    "example:custom-resolvers": "cross-env NODE_TLS_REJECT_UNAUTHORIZED=0 tsx custom-resolvers.ts"
+    "yoga-server": "cross-env NODE_TLS_REJECT_UNAUTHORIZED=0 tsx example-yoga-server.ts",
+    "apollo-server": "cross-env NODE_TLS_REJECT_UNAUTHORIZED=0 tsx example-apollo-server.ts",
+    "custom-resolvers": "cross-env NODE_TLS_REJECT_UNAUTHORIZED=0 tsx example-custom-resolvers.ts"
   },
   "dependencies": {
     "@apollo/server": "^5.2.0",

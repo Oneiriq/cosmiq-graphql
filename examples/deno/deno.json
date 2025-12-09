@@ -5,17 +5,14 @@
   "license": "MIT",
   "author": "Shon Thomas",
   "tasks": {
-    "example:yoga-server": "deno run --allow-net --allow-env --unsafely-ignore-certificate-errors=localhost,127.0.0.1 yoga-server.ts",
-    "example:apollo-server": "deno run --allow-net --allow-env --unsafely-ignore-certificate-errors=localhost,127.0.0.1 apollo-server.ts",
-    "example:sdl-spec": "deno run --allow-net --allow-env --unsafely-ignore-certificate-errors=localhost,127.0.0.1 cosmosdb-sdl-spec.ts",
-    "example:json-spec": "deno run --allow-net --allow-env --unsafely-ignore-certificate-errors=localhost,127.0.0.1 cosmosdb-json-spec.ts",
-    "example:custom-resolvers": "deno run --allow-net --allow-env --unsafely-ignore-certificate-errors=localhost,127.0.0.1 custom-resolvers.ts"
+    "yoga-server": "deno run --allow-net --allow-env --unsafely-ignore-certificate-errors=localhost,127.0.0.1 example-adv-yoga-server.ts",
+    "apollo-server": "deno run --allow-net --allow-env --unsafely-ignore-certificate-errors=localhost,127.0.0.1 example-adv-apollo-server.ts",
+    "custom-resolvers": "deno run --allow-net --allow-env --unsafely-ignore-certificate-errors=localhost,127.0.0.1 example-custom-resolvers.ts"
   },
   "imports": {
     "@azure/cosmos": "npm:@azure/cosmos@^4.9.0",
     "graphql-yoga": "npm:graphql-yoga@^5.17.1",
     "@apollo/server": "npm:@apollo/server@^5.2.0",
     "@oneiriq/cosmiq-graphql": "jsr:@oneiriq/cosmiq-graphql@latest"
-
   }
 }
