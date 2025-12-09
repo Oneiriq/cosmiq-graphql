@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.6.12] - 2025-12-08
+
+### Added
+
+- Additional examples demonstrating various configurations and setups using cosmiq-graphql
+  - Deno and Node.js examples showcasing custom resolvers, sampling, and schema specifications
+  - Examples for Apollo Server and GraphQL Yoga integrations
+
 ## [v0.6.11] - 2025-12-08
 
 ### Added
