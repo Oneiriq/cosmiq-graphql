@@ -833,11 +833,32 @@ async function buildMultiContainerResolvers({
 }
 
 /**
+ * Strictly classify an endpoint as a local-emulator URL.
+ *
+ * Returns true only when the URL parses cleanly and its hostname is exactly
+ * `localhost` or `127.0.0.1`. The previous `String.prototype.includes` check
+ * could match attacker-controlled URLs like
+ * `https://evil.com/?spoof=localhost` and silently disable TLS verification
+ * (CodeQL js/disabling-certificate-validation).
+ */
+export function isLocalEmulatorEndpoint(endpoint: string): boolean {
+  let url: URL
+  try {
+    url = new URL(endpoint)
+  } catch {
+    return false
+  }
+  return url.hostname === 'localhost' || url.hostname === '127.0.0.1'
+}
+
+/**
  * Create CosmosDB client from configuration
  *
- * For local emulator connections (localhost/127.0.0.1), automatically configures
- * an HTTPS agent that bypasses SSL certificate validation, since the emulator
- * uses self-signed certificates.
+ * For local emulator connections (`localhost` / `127.0.0.1` host only), the
+ * client uses an HTTPS agent that does not verify the self-signed emulator
+ * certificate. The hostname check is strict (URL.hostname equality, not a
+ * substring match) so that no remote URL containing the literal string
+ * `localhost` can opt itself into insecure mode.
  *
  * @param config - CosmosDB configuration
  * @returns CosmosDB client instance
@@ -846,8 +867,7 @@ async function buildMultiContainerResolvers({
 function createCosmosClient(config: CosmosDBSubgraphConfig): CosmosClient {
   if (config.connectionString) {
     const connection = parseConnectionString(config.connectionString)
-    const isLocalEmulator = connection.endpoint.includes('localhost') ||
-      connection.endpoint.includes('127.0.0.1')
+    const isLocalEmulator = isLocalEmulatorEndpoint(connection.endpoint)
 
     if (isLocalEmulator) {
       const customAgent = new HttpsAgent({ rejectUnauthorized: false })
@@ -870,8 +890,7 @@ function createCosmosClient(config: CosmosDBSubgraphConfig): CosmosClient {
   }
 
   if (config.endpoint && config.credential) {
-    const isLocalEmulator = config.endpoint.includes('localhost') ||
-      config.endpoint.includes('127.0.0.1')
+    const isLocalEmulator = isLocalEmulatorEndpoint(config.endpoint)
 
     const clientConfig: {
       endpoint: string
