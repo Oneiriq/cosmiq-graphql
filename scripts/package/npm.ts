@@ -24,7 +24,7 @@ await build({
     name: '@oneiriq/cosmiq-graphql',
     version,
     description: 'Data-first GraphQL for Azure CosmosDB',
-    license: 'MIT',
+    license: 'Apache-2.0',
     author: 'Shon Thomas <shon@oneiriq.com> (https://oneiriq.com)',
     publishConfig: {
       access: 'public',
