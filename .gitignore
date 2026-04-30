@@ -40,6 +40,7 @@
 !deno.lock
 !LICENSE
 !mod.ts
+!NOTICE
 !README.md
 
 // -- IGNORE
