@@ -1,6 +1,6 @@
 # Cosmiq GraphQL
 
-[![JSR Version](https://img.shields.io/jsr/v/@oneiriq/cosmiq-graphql)](https://jsr.io/@oneiriq/cosmiq-graphql) [![NPM Version](https://img.shields.io/npm/v/@oneiriq/cosmiq-graphql)](https://www.npmjs.com/package/@oneiriq/cosmiq-graphql) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![JSR Version](https://img.shields.io/jsr/v/@oneiriq/cosmiq-graphql)](https://jsr.io/@oneiriq/cosmiq-graphql) [![NPM Version](https://img.shields.io/npm/v/@oneiriq/cosmiq-graphql)](https://www.npmjs.com/package/@oneiriq/cosmiq-graphql) [![License: Apache 2.0](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 Data-first GraphQL for Azure CosmosDB. Automatically infers GraphQL schemas from your documents, analyzes actual data structure, generates type-safe GraphQL SDL, and integrates seamlessly with GraphQL Mesh, Hive, Yoga, and Apollo Server.
 

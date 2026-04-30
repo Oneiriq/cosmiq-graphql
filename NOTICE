@@ -1,0 +1,18 @@
+cosmiq-graphql
+Copyright (c) 2026 Shon Thomas
+
+This product includes software developed by Shon Thomas
+(https://github.com/Oneiriq/cosmiq-graphql).
+
+Licensed under the Apache License, Version 2.0 (the "License").
+You may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Per Section 4 of the License, redistributions of source code or binary
+forms must retain this NOTICE file in any distribution. If you
+substantially modify cosmiq-graphql, you must clearly mark the modified
+files. You must not use the name "cosmiq-graphql" or the name "Shon
+Thomas" to endorse or promote derivative products without prior written
+permission.
