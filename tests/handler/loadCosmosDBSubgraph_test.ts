@@ -82,10 +82,12 @@ Deno.test('loadCosmosDBSubgraph - returns valid SubgraphHandler with minimal con
     containers: [{ name: 'testcontainer' }],
   })
 
-  // Verify handler is a function with dispose method
+  // Verify handler is a function with dispose method.
+  // (Don't invoke handler() — that lazily triggers schema$ which would
+  // open a real network connection to the configured endpoint.)
   assertEquals(typeof handler, 'function')
   assertEquals(typeof handler.dispose, 'function')
-  
+
   // Clean up (even though schema$ was never triggered)
   handler.dispose()
 })
@@ -143,7 +145,9 @@ Deno.test('loadCosmosDBSubgraph - handler structure conforms to requirements', (
     containers: [{ name: 'mycollection' }],
   })
 
-  // Verify handler is a function with dispose method
+  // The handler must satisfy the MeshSubgraphHandler contract: a callable
+  // with a `dispose` method. We don't invoke it here because doing so
+  // lazily opens a real CosmosDB connection.
   assertEquals(typeof handler, 'function')
   assertEquals(typeof handler.dispose, 'function')
 
@@ -272,7 +276,6 @@ Deno.test('loadCosmosDBSubgraph - handler structure conforms to SubgraphHandler 
     containers: [{ name: 'testcontainer' }],
   })
 
-  // Verify handler is a function with dispose method
   assertEquals(typeof handler, 'function')
   assertEquals(typeof handler.dispose, 'function')
 

@@ -2,7 +2,7 @@ import { assert, assertEquals, assertRejects } from '@std/assert'
 import type { Container } from '@azure/cosmos'
 import { sampleDocuments } from '../../src/handler/document-sampler.ts'
 import type { CosmosDBDocument } from '../../src/types/cosmosdb.ts'
-import { QueryFailedError, ValidationError } from '../../src/errors/mod.ts'
+import { BadRequestError, RateLimitError, ValidationError } from '../../src/errors/mod.ts'
 
 Deno.test('sampleDocuments - top strategy successful retrieval', async () => {
   const mockDocuments: CosmosDBDocument[] = [
@@ -553,38 +553,40 @@ Deno.test('sampleDocuments - documents with CosmosDB metadata preserved', async 
 })
 
 /**
- * Mock container helper for retry tests
+ * Mock container helper for retry tests.
+ *
+ * Each call to `query()` returns a fresh iterator whose `hasMore` state is
+ * scoped to that iterator, so retries (which call query() again) start
+ * cleanly. The provided `queryResponse` is invoked when fetchNext succeeds,
+ * but it can also `throw` to simulate a transient failure.
  */
 function createMockContainer({
   queryResponse,
 }: {
   queryResponse?: () => { resources: CosmosDBDocument[]; requestCharge: number }
 }): Container {
-  let hasMore = true
   return {
     items: {
-      query: () => ({
-        hasMoreResults: () => hasMore,
-        fetchNext: async () => {
-          hasMore = false
-          if (queryResponse) {
-            return queryResponse()
-          }
-          return { resources: [], requestCharge: 0 }
-        },
-      }),
+      query: () => {
+        let hasMore = true
+        return {
+          hasMoreResults: () => hasMore,
+          fetchNext: async () => {
+            hasMore = false
+            if (queryResponse) {
+              // Allow the caller to throw inside queryResponse to simulate
+              // transient errors per attempt.
+              return queryResponse()
+            }
+            return { resources: [], requestCharge: 0 }
+          },
+        }
+      },
     },
   } as unknown as Container
 }
 
-// Retry-logic test suite is skipped because it was previously hidden by
-// a stray-`})` parse error and never actually ran. Fixing the parser
-// surface (the closer added at line ~552) revealed that all 7 inner
-// steps assert behaviours the production document-sampler.ts retry
-// path doesn't implement (AssertionError: Values are not equal across
-// the board). Skipping here preserves the publish gate; the underlying
-// retry-logic gap is filed separately.
-Deno.test.ignore('Document Sampler - Retry Logic', async (t) => {
+Deno.test('Document Sampler - Retry Logic', async (t) => {
   await t.step('should retry on rate limit and succeed', async () => {
     let queryCallCount = 0
     const mockContainer = createMockContainer({
@@ -631,7 +633,7 @@ Deno.test.ignore('Document Sampler - Retry Logic', async (t) => {
           retry: { maxRetries: 2, baseDelayMs: 5 },
         })
       },
-      QueryFailedError,
+      RateLimitError,
     )
   })
 
@@ -729,7 +731,7 @@ Deno.test.ignore('Document Sampler - Retry Logic', async (t) => {
           retry: { maxRetries: 3, baseDelayMs: 5 },
         })
       },
-      QueryFailedError,
+      BadRequestError,
     )
 
     assertEquals(callCount, 1)

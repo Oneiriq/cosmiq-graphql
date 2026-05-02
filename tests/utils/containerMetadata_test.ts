@@ -3,9 +3,8 @@
  * @module
  */
 
-import { assertEquals, assertExists } from '@std/assert'
+import { assertEquals } from '@std/assert'
 import { beforeEach, describe, it } from '@std/testing/bdd'
-import { stub } from '@std/testing/mock'
 import type { Container, ContainerResponse } from '@azure/cosmos'
 import {
   clearPartitionKeyCache,

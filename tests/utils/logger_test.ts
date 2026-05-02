@@ -273,16 +273,47 @@ Deno.test('Logger - configure preserves existing output function', () => {
 })
 
 Deno.test('Logger - default output uses console methods', () => {
-  // This test verifies the logger works with default console output
-  // We can't easily test actual console output, but we can verify no errors
-  const testLogger = new Logger({
-    enabled: true,
-    minLevel: 'debug'
-  })
+  // Capture console method invocations to confirm the default output
+  // dispatches each level to its corresponding console method (info maps
+  // to console.log, all other levels map to the matching console method).
+  const calls: Array<{ method: string; firstArg: string }> = []
+  const original = {
+    debug: console.debug,
+    log: console.log,
+    warn: console.warn,
+    error: console.error,
+  }
+  console.debug = (...args: unknown[]) => calls.push({ method: 'debug', firstArg: String(args[0]) })
+  console.log = (...args: unknown[]) => calls.push({ method: 'log', firstArg: String(args[0]) })
+  console.warn = (...args: unknown[]) => calls.push({ method: 'warn', firstArg: String(args[0]) })
+  console.error = (...args: unknown[]) => calls.push({ method: 'error', firstArg: String(args[0]) })
 
-  // Should not throw
-  testLogger.debug('debug test')
-  testLogger.info('info test')
-  testLogger.warn('warn test')
-  testLogger.error('error test')
+  try {
+    const testLogger = new Logger({
+      enabled: true,
+      minLevel: 'debug',
+    })
+
+    testLogger.debug('debug test')
+    testLogger.info('info test')
+    testLogger.warn('warn test')
+    testLogger.error('error test')
+  } finally {
+    console.debug = original.debug
+    console.log = original.log
+    console.warn = original.warn
+    console.error = original.error
+  }
+
+  assertEquals(calls.length, 4)
+  assertEquals(calls[0].method, 'debug')
+  assertEquals(calls[1].method, 'log')
+  assertEquals(calls[2].method, 'warn')
+  assertEquals(calls[3].method, 'error')
+  // The default output prefixes a timestamp + level tag, so we only
+  // check that each message is preserved in the formatted line.
+  assertEquals(calls[0].firstArg.endsWith('debug test'), true)
+  assertEquals(calls[1].firstArg.endsWith('info test'), true)
+  assertEquals(calls[2].firstArg.endsWith('warn test'), true)
+  assertEquals(calls[3].firstArg.endsWith('error test'), true)
 })

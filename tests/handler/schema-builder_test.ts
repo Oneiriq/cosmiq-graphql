@@ -93,9 +93,19 @@ Deno.test('buildSchemaWithGraphQL - schema construction', async (t) => {
       graphqlModule: GraphQLToolsSchema,
     })
 
-    // Verify type constructors match
-    const queryType = schema.getQueryType()
-    assertExists(queryType)
+    // The returned schema should be the same instance type
+    // produced by makeExecutableSchema from the supplied module.
+    const expected = GraphQLToolsSchema.makeExecutableSchema({ typeDefs: TEST_SDL })
+    assertEquals(schema.constructor, expected.constructor)
+
+    // Schema should expose User type with correct fields, demonstrating
+    // SDL was parsed by the consumer module.
+    const userType = schema.getType('User')
+    assertExists(userType)
+    const userFields = (userType as unknown as { getFields: () => Record<string, unknown> }).getFields()
+    assertExists(userFields.id)
+    assertExists(userFields.name)
+    assertExists(userFields.email)
   })
 })
 
@@ -128,18 +138,32 @@ type User {
       graphqlModule: GraphQLToolsSchema,
     })
 
-    const userType = schema.getType('User')
+    const userType = schema.getType('User') as unknown as {
+      getFields: () => Record<string, { resolve?: (...args: unknown[]) => unknown }>
+    }
     assertExists(userType)
+    const fullNameField = userType.getFields().fullName
+    assertExists(fullNameField)
+    assertExists(fullNameField.resolve)
   })
 
-  await t.step('type resolvers work correctly', () => {
+  await t.step('type resolvers compute derived values', () => {
     const schema = buildSchemaWithGraphQL({
       sdl: sdlWithTypeResolvers,
       resolvers: resolversWithType,
       graphqlModule: GraphQLToolsSchema,
     })
 
-    const userType = schema.getType('User')
-    assertExists(userType)
+    const userType = schema.getType('User') as unknown as {
+      getFields: () => Record<
+        string,
+        { resolve?: (source: unknown, args: unknown, ctx: unknown, info: unknown) => unknown }
+      >
+    }
+    const fullNameResolve = userType.getFields().fullName.resolve
+    assertExists(fullNameResolve)
+
+    const result = fullNameResolve({ id: '1', name: 'Jane' }, {}, {}, {} as GraphQLResolveInfo)
+    assertEquals(result, 'Mr. Jane')
   })
 })
