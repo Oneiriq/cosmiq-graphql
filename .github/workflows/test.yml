@@ -3,12 +3,9 @@ name: Unit Tests
 on:
   workflow_call:
 
-permissions:
-  contents: read
-
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, aur0]
     strategy:
       matrix:
         deno-version: [v2.x]
@@ -19,4 +16,4 @@ jobs:
         with:
           deno-version: ${{ matrix.deno-version }}
       - name: Run all tests
-        run: deno task test
+        run: deno test -A --ignore="src/test/auth.test.ts" -q

@@ -14,9 +14,6 @@ on:
           - both
         default: both
 
-permissions:
-  contents: read
-
 jobs:
   check:
     uses: ./.github/workflows/check.yml
@@ -29,7 +26,7 @@ jobs:
     if: >
       github.event_name == 'release' ||
       (github.event_name == 'workflow_dispatch' && (inputs.target == 'jsr' || inputs.target == 'both'))
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, aur0]
     permissions:
       contents: read
       id-token: write
@@ -47,7 +44,7 @@ jobs:
     if: >
       (github.event_name == 'release' && !github.event.release.prerelease) ||
       (github.event_name == 'workflow_dispatch' && (inputs.target == 'npm' || inputs.target == 'both'))
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, aur0]
     environment: publish
     permissions:
       contents: read
@@ -63,7 +60,7 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
       - name: Build npm package
-        run: deno task build
+        run: deno task build:npm
       - name: Publish to npm
         working-directory: ./npm
         run: npm publish --access public
