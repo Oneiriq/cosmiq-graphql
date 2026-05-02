@@ -60,7 +60,7 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
       - name: Build npm package
-        run: deno task build:npm
+        run: deno task build
       - name: Publish to npm
         working-directory: ./npm
         run: npm publish --access public
