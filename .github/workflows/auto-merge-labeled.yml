@@ -23,7 +23,9 @@ jobs:
   gates-and-merge:
     if: >-
       contains(github.event.pull_request.labels.*.name, 'auto-merge') &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login == 'github-actions[bot]' &&
+      startsWith(github.event.pull_request.head.ref, 'chore/deno-update-')
     runs-on: [self-hosted, aur0]
     steps:
       - name: Checkout PR head
