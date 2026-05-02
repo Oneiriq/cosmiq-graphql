@@ -262,6 +262,7 @@ describe('validateContainerConfig', () => {
   })
 
   it('should include custom component name in error context', () => {
+    let caught: ValidationError | undefined
     try {
       validateContainerConfig({
         config: {
@@ -271,12 +272,19 @@ describe('validateContainerConfig', () => {
       })
     } catch (error) {
       if (error instanceof ValidationError) {
-        assertEquals(error.context.component, 'testComponent')
+        caught = error
+      } else {
+        throw error
       }
     }
+    if (!caught) {
+      throw new Error('Expected ValidationError to be thrown')
+    }
+    assertEquals(caught.context.component, 'testComponent')
   })
 
   it('should use default component name when not provided', () => {
+    let caught: ValidationError | undefined
     try {
       validateContainerConfig({
         config: {
@@ -285,8 +293,14 @@ describe('validateContainerConfig', () => {
       })
     } catch (error) {
       if (error instanceof ValidationError) {
-        assertEquals(error.context.component, 'validateContainerConfig')
+        caught = error
+      } else {
+        throw error
       }
     }
+    if (!caught) {
+      throw new Error('Expected ValidationError to be thrown')
+    }
+    assertEquals(caught.context.component, 'validateContainerConfig')
   })
 })

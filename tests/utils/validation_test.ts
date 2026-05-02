@@ -68,13 +68,20 @@ describe('validateRequiredString', () => {
   })
 
   it('should include component in error context', () => {
+    let caught: ValidationError | undefined
     try {
       validateRequiredString('', 'field', 'testComponent')
     } catch (error) {
       if (error instanceof ValidationError) {
-        assertEquals(error.context.component, 'testComponent')
+        caught = error
+      } else {
+        throw error
       }
     }
+    if (!caught) {
+      throw new Error('Expected ValidationError to be thrown')
+    }
+    assertEquals(caught.context.component, 'testComponent')
   })
 
   it('should handle tabs and newlines as whitespace', () => {
