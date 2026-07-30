@@ -140,6 +140,7 @@ export class SchemaCache {
   }
   private readonly locks: Map<string, { promise: Promise<void>; resolve: () => void }> = new Map()
 
+  /** Create a new SchemaCache, merging the given config with DEFAULT_CACHE_CONFIG */
   constructor(config: Partial<CacheConfig> = {}) {
     this.config = { ...DEFAULT_CACHE_CONFIG, ...config }
   }

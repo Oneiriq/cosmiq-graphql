@@ -11,6 +11,7 @@ import { CosmosDBError, createErrorContext, ErrorCode } from '../errors/mod.ts'
  * Custom error for type conflicts
  */
 export class TypeConflictError extends CosmosDBError {
+  /** Create a new TypeConflictError capturing the conflicting types and field name */
   constructor(message: string, types: Set<PrimitiveType>, fieldName?: string) {
     super({
       message,

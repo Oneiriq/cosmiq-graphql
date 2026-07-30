@@ -10,6 +10,12 @@ export { buildResolvers } from './resolver-builder.ts'
 export { createExecutableSchema } from './schema-executor.ts'
 export { buildSchemaWithGraphQL } from './schema-builder.ts'
 export { buildDecrementResolver, buildIncrementResolver } from './atomic-operations.ts'
+export type {
+  AtomicNumericResult,
+  BuildDecrementResolverParams,
+  BuildIncrementResolverParams,
+} from './atomic-operations.ts'
+export type { ArrayOperation, ArrayOperationType } from './array-operations.ts'
 export type { BuildResolversOptions } from './resolver-builder.ts'
 export type { SampleDocumentsOptions, SampleResult, SamplingStrategy } from './document-sampler.ts'
 export type { CreateExecutableSchemaOptions } from './schema-executor.ts'
