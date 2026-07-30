@@ -40,7 +40,10 @@ jobs:
       - name: Setup Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version: v2.x
+          # Pinned below 2.8 to match check.yml: `deno doc --lint` in the
+          # gate sequence cannot pass on 2.8+ while the public API exposes
+          # @azure/cosmos types (private-type-ref chases npm internals).
+          deno-version: v2.7.x
 
       - name: Run deno outdated --update
         run: deno outdated --update

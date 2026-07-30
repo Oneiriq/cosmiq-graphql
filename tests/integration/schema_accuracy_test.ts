@@ -9,8 +9,12 @@
  * - Separate test databases created automatically for each scenario
  * - Single container per database for test data
  *
+ * The scenario tests are opt-in: they run only when COSMOS_EMULATOR=1 is
+ * set, and are skipped otherwise (CI has no emulator and would otherwise
+ * fail on connection errors).
+ *
  * Run with:
- * deno test --allow-net --unsafely-ignore-certificate-errors=localhost,127.0.0.1 tests/integration/schema_accuracy_test.ts
+ * COSMOS_EMULATOR=1 deno test --allow-net --allow-env --unsafely-ignore-certificate-errors=localhost,127.0.0.1 tests/integration/schema_accuracy_test.ts
  */
 
 import { assert, assertEquals, assertExists } from '@std/assert'
@@ -44,6 +48,11 @@ const TEST_CONFIG = {
   documentCount: 100,
   baseDate: new Date('2024-01-01'),
 }
+
+// The scenario tests need a live CosmosDB emulator at TEST_CONFIG.endpoint.
+// Opt in explicitly with COSMOS_EMULATOR=1; environments without the
+// emulator (CI in particular) skip instead of failing on connection errors.
+const EMULATOR_OPTED_IN = Deno.env.get('COSMOS_EMULATOR') === '1'
 
 // =============================================================================
 // VISUAL DISPLAY CONFIGURATION
@@ -135,7 +144,7 @@ async function setupTestDatabase({
       partitionKey: { paths: [TEST_CONFIG.partitionKey] },
       throughput: TEST_CONFIG.throughput,
     })
-    
+
     return database
   } catch (error) {
     const err = error as { code?: number; message?: string }
@@ -378,15 +387,13 @@ function displayTestSummary(): void {
     `║${' '.repeat(13)}${COLORS.BOLD}Schema Accuracy Test Summary${COLORS.RESET}${' '.repeat(width - 43)}║`,
   )
   console.log(`╠${'═'.repeat(width - 2)}╣`)
-for (const result of testResults) {
-  const status = result.passed
-    ? `${COLORS.GREEN}✓ PASSED${COLORS.RESET}`
-    : `${COLORS.RED}✗ FAILED${COLORS.RESET}`
-  const avg = `(${result.avgAccuracy.toFixed(1)}% avg)`
-  const line = `${result.scenario}${' '.repeat(22 - result.scenario.length)}${status}  ${avg}`
-  const cleanLine = stripAnsiCodes(line)
-  console.log(`║ ${line}${' '.repeat(width - cleanLine.length - 2)}║`)
-}
+  for (const result of testResults) {
+    const status = result.passed ? `${COLORS.GREEN}✓ PASSED${COLORS.RESET}` : `${COLORS.RED}✗ FAILED${COLORS.RESET}`
+    const avg = `(${result.avgAccuracy.toFixed(1)}% avg)`
+    const line = `${result.scenario}${' '.repeat(22 - result.scenario.length)}${status}  ${avg}`
+    const cleanLine = stripAnsiCodes(line)
+    console.log(`║ ${line}${' '.repeat(width - cleanLine.length - 2)}║`)
+  }
   console.log(`╠${'═'.repeat(width - 2)}╣`)
 
   const passedCount = testResults.filter((r) => r.passed).length
@@ -404,11 +411,11 @@ for (const result of testResults) {
 // SCENARIO TESTS
 // =============================================================================
 
-Deno.test('Schema Accuracy: Flat Primitives', async () => {
+Deno.test('Schema Accuracy: Flat Primitives', { ignore: !EMULATOR_OPTED_IN }, async () => {
   const client = createClient()
   const databaseName = 'test_scenarios_flat'
   const containerName = 'data'
-  
+
   let database: ReturnType<CosmosClient['database']> | null = null
 
   try {
@@ -495,11 +502,11 @@ Deno.test('Schema Accuracy: Flat Primitives', async () => {
   }
 })
 
-Deno.test('Schema Accuracy: Nested Objects', async () => {
+Deno.test('Schema Accuracy: Nested Objects', { ignore: !EMULATOR_OPTED_IN }, async () => {
   const client = createClient()
   const databaseName = 'test_scenarios_nested'
   const containerName = 'data'
-  
+
   let database: ReturnType<CosmosClient['database']> | null = null
 
   try {
@@ -592,11 +599,11 @@ Deno.test('Schema Accuracy: Nested Objects', async () => {
   }
 })
 
-Deno.test('Schema Accuracy: Polymorphic Arrays', async () => {
+Deno.test('Schema Accuracy: Polymorphic Arrays', { ignore: !EMULATOR_OPTED_IN }, async () => {
   const client = createClient()
   const databaseName = 'test_scenarios_polymorphic'
   const containerName = 'data'
-  
+
   let database: ReturnType<CosmosClient['database']> | null = null
 
   try {
@@ -683,11 +690,11 @@ Deno.test('Schema Accuracy: Polymorphic Arrays', async () => {
   }
 })
 
-Deno.test('Schema Accuracy: Sparse Fields', async () => {
+Deno.test('Schema Accuracy: Sparse Fields', { ignore: !EMULATOR_OPTED_IN }, async () => {
   const client = createClient()
   const databaseName = 'test_scenarios_sparse'
   const containerName = 'data'
-  
+
   let database: ReturnType<CosmosClient['database']> | null = null
 
   try {
@@ -774,11 +781,11 @@ Deno.test('Schema Accuracy: Sparse Fields', async () => {
   }
 })
 
-Deno.test('Schema Accuracy: Partition Patterns', async () => {
+Deno.test('Schema Accuracy: Partition Patterns', { ignore: !EMULATOR_OPTED_IN }, async () => {
   const client = createClient()
   const databaseName = 'test_scenarios_partitions'
   const containerName = 'data'
-  
+
   let database: ReturnType<CosmosClient['database']> | null = null
 
   try {

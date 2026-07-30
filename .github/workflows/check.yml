@@ -12,7 +12,13 @@ jobs:
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted", "aur0"]') }}
     strategy:
       matrix:
-        deno-version: [v2.x]
+        # Pinned below 2.8: from 2.8 `deno doc --lint` chases type
+        # references into npm dependencies, and a public API that exposes
+        # @azure/cosmos types (Container, CosmosClient) cannot satisfy
+        # private-type-ref — re-exporting them just cascades into the
+        # SDK's own internals. Re-evaluate the pin when the rule learns
+        # to treat external packages as documented elsewhere.
+        deno-version: [v2.7.x]
     steps:
       - uses: actions/checkout@v4
       - name: Setup Deno
