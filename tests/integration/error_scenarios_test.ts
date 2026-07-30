@@ -4,25 +4,25 @@
  * @module
  */
 
-import { assertEquals, assertRejects, assert } from '@std/assert'
+import { assert, assertEquals, assertRejects } from '@std/assert'
 import { stub } from '@std/testing/mock'
 import type { Container, CosmosClient, Database } from '@azure/cosmos'
 import { sampleDocuments } from '../../src/handler/document-sampler.ts'
-import { parseConnectionString, parseConnectionConfig } from '../../src/handler/connection-parser.ts'
+import { parseConnectionConfig, parseConnectionString } from '../../src/handler/connection-parser.ts'
 import { withRetry } from '../../src/utils/retryWrapper.ts'
 import { transformCosmosDBError } from '../../src/utils/retryErrors.ts'
 import { createErrorContext } from '../../src/errors/mod.ts'
 import {
+  ConflictingAuthMethodsError,
+  ForbiddenError,
   InvalidConnectionStringError,
   MissingAuthMethodError,
-  ConflictingAuthMethodsError,
   MissingCredentialError,
-  ValidationError,
-  QueryFailedError,
   NotFoundError,
-  ForbiddenError,
+  QueryFailedError,
   RateLimitError,
   UnauthorizedError,
+  ValidationError,
 } from '../../src/errors/mod.ts'
 
 /**
@@ -696,7 +696,10 @@ Deno.test('Error Scenarios - Resource Issues', async (t) => {
       })
       assert(false, 'Should have thrown UnauthorizedError')
     } catch (error) {
-      assert(error instanceof UnauthorizedError, `Should be UnauthorizedError, got ${(error as Error).constructor.name}`)
+      assert(
+        error instanceof UnauthorizedError,
+        `Should be UnauthorizedError, got ${(error as Error).constructor.name}`,
+      )
       assertEquals(error.code, 'UNAUTHORIZED')
       assertEquals(error.metadata.activityId, 'test-activity-401')
       assertEquals(error.metadata.substatus, 20001)
@@ -780,266 +783,275 @@ Deno.test('Error Scenarios - Resource Issues', async (t) => {
       assertEquals(error.metadata.statusCode, 404)
     }
   })
-  
-  Deno.test('Error Scenarios - Error Transformation via Retry Wrapper', async (t) => {
-    await t.step('should transform errors through retry wrapper', async () => {
-      let callCount = 0
-      const operation = async () => {
-        callCount++
-        throw {
+})
+
+Deno.test('Error Scenarios - Error Transformation via Retry Wrapper', async (t) => {
+  await t.step('should transform errors through retry wrapper', async () => {
+    let callCount = 0
+    const operation = async () => {
+      callCount++
+      throw {
+        code: 404,
+        message: 'Container not found',
+        activityId: 'wrapper-test-404',
+      }
+    }
+
+    try {
+      await withRetry(operation, {
+        config: { maxRetries: 0 },
+        component: 'test-component',
+      })
+      assert(false, 'Should have thrown')
+    } catch (error) {
+      assert(error instanceof NotFoundError)
+      assertEquals(error.code, 'NOT_FOUND')
+      assertEquals(error.metadata.activityId, 'wrapper-test-404')
+      assertEquals(callCount, 1)
+    }
+  })
+
+  await t.step('should transform 401 through retry wrapper', async () => {
+    const operation = async () => {
+      throw {
+        code: 401,
+        message: 'Invalid credentials',
+        activityId: 'wrapper-test-401',
+      }
+    }
+
+    try {
+      await withRetry(operation, {
+        config: { maxRetries: 0 },
+        component: 'auth-test',
+      })
+      assert(false, 'Should have thrown')
+    } catch (error) {
+      assert(error instanceof UnauthorizedError)
+      assertEquals(error.code, 'UNAUTHORIZED')
+    }
+  })
+
+  await t.step('should transform 403 through retry wrapper', async () => {
+    const operation = async () => {
+      throw {
+        code: 403,
+        message: 'Permission denied',
+        activityId: 'wrapper-test-403',
+        requestCharge: 5.0,
+      }
+    }
+
+    try {
+      await withRetry(operation, {
+        config: { maxRetries: 0 },
+        component: 'permission-test',
+      })
+      assert(false, 'Should have thrown')
+    } catch (error) {
+      assert(error instanceof ForbiddenError)
+      assertEquals(error.code, 'FORBIDDEN')
+      assertEquals(error.metadata.requestCharge, 5.0)
+    }
+  })
+
+  await t.step('should transform 429 through retry wrapper with retries', async () => {
+    let callCount = 0
+    const operation = async () => {
+      callCount++
+      throw {
+        code: 429,
+        message: 'Too many requests',
+        requestCharge: 10.0,
+      }
+    }
+
+    try {
+      await withRetry(operation, {
+        config: { maxRetries: 2, baseDelayMs: 1 },
+        component: 'rate-limit-test',
+      })
+      assert(false, 'Should have thrown')
+    } catch (error) {
+      assert(error instanceof RateLimitError)
+      assertEquals(error.code, 'RATE_LIMIT_EXCEEDED')
+      assertEquals(callCount, 3)
+    }
+  })
+
+  await t.step('should use transformCosmosDBError directly', () => {
+    const context = createErrorContext({ component: 'direct-transform' })
+
+    const error404 = transformCosmosDBError(
+      { code: 404, message: 'Not found' },
+      'test-component',
+    )
+    assert(error404 instanceof NotFoundError)
+
+    const error403 = transformCosmosDBError(
+      { code: 403, message: 'Forbidden' },
+      'test-component',
+    )
+    assert(error403 instanceof ForbiddenError)
+
+    const error401 = transformCosmosDBError(
+      { code: 401, message: 'Unauthorized' },
+      'test-component',
+    )
+    assert(error401 instanceof UnauthorizedError)
+
+    const error429 = transformCosmosDBError(
+      { code: 429, message: 'Rate limit' },
+      'test-component',
+    )
+    assert(error429 instanceof RateLimitError)
+  })
+})
+
+Deno.test('Error Scenarios - Mocking with Stubs', async (t) => {
+  await t.step('should mock CosmosClient database creation', async () => {
+    const mockClient = {} as CosmosClient
+    const mockDb = {
+      id: 'test-db',
+      container: () => ({
+        id: 'test-container',
+      }),
+    } as unknown as Database
+
+    const dbStub = stub(
+      mockClient,
+      'database' as never,
+      () => mockDb,
+    )
+
+    try {
+      const db = (mockClient as { database: (id: string) => Database }).database('test-db')
+      assertEquals(db.id, 'test-db')
+      assertEquals(dbStub.calls.length, 1)
+    } finally {
+      dbStub.restore()
+    }
+  })
+
+  await t.step('should mock Database container method', async () => {
+    const mockContainer = {
+      id: 'mocked-container',
+      items: {
+        query: () => ({
+          hasMoreResults: () => false,
+          fetchNext: async () => ({ resources: [], requestCharge: 0 }),
+        }),
+      },
+    } as unknown as Container
+
+    const mockDb = {} as Database
+    const containerStub = stub(
+      mockDb,
+      'container' as never,
+      () => mockContainer,
+    )
+
+    try {
+      const container = (mockDb as { container: (id: string) => Container }).container('test-container')
+      assertEquals(container.id, 'mocked-container')
+      assertEquals(containerStub.calls.length, 1)
+    } finally {
+      containerStub.restore()
+    }
+  })
+
+  await t.step('should mock Container query operations with stub', async () => {
+    const queryIterator = {
+      fetchNext: (): Promise<unknown> => Promise.resolve({}),
+    }
+    const queryStub = stub(
+      queryIterator,
+      'fetchNext',
+      () =>
+        Promise.reject({
           code: 404,
           message: 'Container not found',
-          activityId: 'wrapper-test-404',
-        }
-      }
-  
-      try {
-        await withRetry(operation, {
-          config: { maxRetries: 0 },
-          component: 'test-component',
-        })
-        assert(false, 'Should have thrown')
-      } catch (error) {
-        assert(error instanceof NotFoundError)
-        assertEquals(error.code, 'NOT_FOUND')
-        assertEquals(error.metadata.activityId, 'wrapper-test-404')
-        assertEquals(callCount, 1)
-      }
-    })
-  
-    await t.step('should transform 401 through retry wrapper', async () => {
-      const operation = async () => {
-        throw {
-          code: 401,
-          message: 'Invalid credentials',
-          activityId: 'wrapper-test-401',
-        }
-      }
-  
-      try {
-        await withRetry(operation, {
-          config: { maxRetries: 0 },
-          component: 'auth-test',
-        })
-        assert(false, 'Should have thrown')
-      } catch (error) {
-        assert(error instanceof UnauthorizedError)
-        assertEquals(error.code, 'UNAUTHORIZED')
-      }
-    })
-  
-    await t.step('should transform 403 through retry wrapper', async () => {
-      const operation = async () => {
-        throw {
-          code: 403,
-          message: 'Permission denied',
-          activityId: 'wrapper-test-403',
-          requestCharge: 5.0,
-        }
-      }
-  
-      try {
-        await withRetry(operation, {
-          config: { maxRetries: 0 },
-          component: 'permission-test',
-        })
-        assert(false, 'Should have thrown')
-      } catch (error) {
-        assert(error instanceof ForbiddenError)
-        assertEquals(error.code, 'FORBIDDEN')
-        assertEquals(error.metadata.requestCharge, 5.0)
-      }
-    })
-  
-    await t.step('should transform 429 through retry wrapper with retries', async () => {
-      let callCount = 0
-      const operation = async () => {
-        callCount++
-        throw {
-          code: 429,
-          message: 'Too many requests',
-          requestCharge: 10.0,
-        }
-      }
-  
-      try {
-        await withRetry(operation, {
-          config: { maxRetries: 2, baseDelayMs: 1 },
-          component: 'rate-limit-test',
-        })
-        assert(false, 'Should have thrown')
-      } catch (error) {
-        assert(error instanceof RateLimitError)
-        assertEquals(error.code, 'RATE_LIMIT_EXCEEDED')
-        assertEquals(callCount, 3)
-      }
-    })
-  
-    await t.step('should use transformCosmosDBError directly', () => {
-      const context = createErrorContext({ component: 'direct-transform' })
-      
-      const error404 = transformCosmosDBError(
-        { code: 404, message: 'Not found' },
-        'test-component',
-      )
-      assert(error404 instanceof NotFoundError)
-  
-      const error403 = transformCosmosDBError(
-        { code: 403, message: 'Forbidden' },
-        'test-component',
-      )
-      assert(error403 instanceof ForbiddenError)
-  
-      const error401 = transformCosmosDBError(
-        { code: 401, message: 'Unauthorized' },
-        'test-component',
-      )
-      assert(error401 instanceof UnauthorizedError)
-  
-      const error429 = transformCosmosDBError(
-        { code: 429, message: 'Rate limit' },
-        'test-component',
-      )
-      assert(error429 instanceof RateLimitError)
-    })
-  })
-  
-  Deno.test('Error Scenarios - Mocking with Stubs', async (t) => {
-    await t.step('should mock CosmosClient database creation', async () => {
-      const mockClient = {} as CosmosClient
-      const mockDb = {
-        id: 'test-db',
-        container: () => ({
-          id: 'test-container',
         }),
-      } as unknown as Database
-  
-      const dbStub = stub(
-        mockClient,
-        'database' as never,
-        () => mockDb,
-      )
-  
-      try {
-        const db = (mockClient as { database: (id: string) => Database }).database('test-db')
-        assertEquals(db.id, 'test-db')
-        assertEquals(dbStub.calls.length, 1)
-      } finally {
-        dbStub.restore()
+    )
+
+    try {
+      await queryIterator.fetchNext()
+      assert(false, 'Should have thrown')
+    } catch (error) {
+      const transformed = transformCosmosDBError(error, 'stub-test')
+      assert(transformed instanceof NotFoundError)
+      assertEquals(queryStub.calls.length, 1)
+    } finally {
+      queryStub.restore()
+    }
+  })
+
+  await t.step('should mock Container with various error responses', async () => {
+    const errorScenarios = [
+      { code: 401, message: 'Unauthorized', expectedType: UnauthorizedError },
+      { code: 403, message: 'Forbidden', expectedType: ForbiddenError },
+      { code: 404, message: 'Not found', expectedType: NotFoundError },
+      { code: 429, message: 'Rate limit', expectedType: RateLimitError },
+    ]
+
+    for (const scenario of errorScenarios) {
+      const operation = {
+        execute: (): Promise<unknown> => Promise.resolve({}),
       }
-    })
-  
-    await t.step('should mock Database container method', async () => {
-      const mockContainer = {
-        id: 'mocked-container',
-        items: {
-          query: () => ({
-            hasMoreResults: () => false,
-            fetchNext: async () => ({ resources: [], requestCharge: 0 }),
-          }),
-        },
-      } as unknown as Container
-  
-      const mockDb = {} as Database
-      const containerStub = stub(
-        mockDb,
-        'container' as never,
-        () => mockContainer,
+      const mockOp = stub(
+        operation,
+        'execute',
+        () => Promise.reject(scenario),
       )
-  
+
       try {
-        const container = (mockDb as { container: (id: string) => Container }).container('test-container')
-        assertEquals(container.id, 'mocked-container')
-        assertEquals(containerStub.calls.length, 1)
-      } finally {
-        containerStub.restore()
-      }
-    })
-  
-    await t.step('should mock Container query operations with stub', async () => {
-      const queryStub = stub(
-        {},
-        'fetchNext' as never,
-        async () => {
-          throw {
-            code: 404,
-            message: 'Container not found',
-          }
-        },
-      )
-  
-      try {
-        await (queryStub as unknown as { fetchNext: () => Promise<unknown> }).fetchNext()
+        await operation.execute()
         assert(false, 'Should have thrown')
       } catch (error) {
-        const transformed = transformCosmosDBError(error, 'stub-test')
-        assert(transformed instanceof NotFoundError)
-      } finally {
-        queryStub.restore()
-      }
-    })
-  
-    await t.step('should mock Container with various error responses', async () => {
-      const errorScenarios = [
-        { code: 401, message: 'Unauthorized', expectedType: UnauthorizedError },
-        { code: 403, message: 'Forbidden', expectedType: ForbiddenError },
-        { code: 404, message: 'Not found', expectedType: NotFoundError },
-        { code: 429, message: 'Rate limit', expectedType: RateLimitError },
-      ]
-  
-      for (const scenario of errorScenarios) {
-        const mockOp = stub(
-          {},
-          'execute' as never,
-          async () => {
-            throw scenario
-          },
-        )
-  
-        try {
-          await (mockOp as unknown as { execute: () => Promise<unknown> }).execute()
-          assert(false, 'Should have thrown')
-        } catch (error) {
-          const transformed = transformCosmosDBError(error, 'mock-test')
-          assert(transformed instanceof scenario.expectedType)
-        } finally {
-          mockOp.restore()
-        }
-      }
-    })
-  
-    await t.step('should mock successful operation with retry wrapper', async () => {
-      let callCount = 0
-      const mockOp = stub(
-        {},
-        'execute' as never,
-        async () => {
-          callCount++
-          if (callCount === 1) {
-            throw { code: 429, message: 'Rate limit' }
-          }
-          return { success: true, data: 'test' }
-        },
-      )
-  
-      try {
-        const result = await withRetry(
-          async () => await (mockOp as unknown as { execute: () => Promise<{ success: boolean; data: string }> }).execute(),
-          {
-            config: { maxRetries: 2, baseDelayMs: 1 },
-            component: 'stub-retry-test',
-          },
-        )
-  
-        assert(result.success)
-        assertEquals(result.data, 'test')
-        assertEquals(callCount, 2)
+        const transformed = transformCosmosDBError(error, 'mock-test')
+        assert(transformed instanceof scenario.expectedType)
       } finally {
         mockOp.restore()
       }
-    })
+    }
   })
 
+  await t.step('should mock successful operation with retry wrapper', async () => {
+    let callCount = 0
+    const operation = {
+      execute: (): Promise<{ success: boolean; data: string }> => Promise.resolve({ success: true, data: 'test' }),
+    }
+    const mockOp = stub(
+      operation,
+      'execute',
+      () => {
+        callCount++
+        if (callCount === 1) {
+          return Promise.reject({ code: 429, message: 'Rate limit' })
+        }
+        return Promise.resolve({ success: true, data: 'test' })
+      },
+    )
+
+    try {
+      const result = await withRetry(
+        async () => await operation.execute(),
+        {
+          config: { maxRetries: 2, baseDelayMs: 1 },
+          component: 'stub-retry-test',
+        },
+      )
+
+      assert(result.success)
+      assertEquals(result.data, 'test')
+      assertEquals(callCount, 2)
+    } finally {
+      mockOp.restore()
+    }
+  })
+})
+
+Deno.test('Error Scenarios - Rate Limit Metadata Preservation', async (t) => {
   await t.step('should preserve substatus in RateLimitError', async () => {
     const mockContainer = createMockContainer(async () => {
       throw {

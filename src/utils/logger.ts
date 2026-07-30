@@ -47,6 +47,7 @@ export class Logger {
     'error': 3,
   }
 
+  /** Create a new Logger, filling in defaults for minLevel, prefix, and output */
   constructor(config: LoggerConfig) {
     this.config = {
       enabled: config.enabled,

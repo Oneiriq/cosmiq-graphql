@@ -109,11 +109,16 @@ export type CosmosDBErrorMetadata = {
  * ```
  */
 export class CosmosDBError extends Error {
+  /** Structured context describing where and when the error occurred */
   public readonly context: CosmosDBErrorContext
+  /** Machine-readable error code */
   public readonly code: ErrorCode
+  /** Severity classification of the error */
   public readonly severity: ErrorSeverity
+  /** Whether the failed operation can be safely retried */
   public readonly retryable: boolean
 
+  /** Create a new CosmosDBError with the given message, context, code, severity, and retryability */
   constructor({
     message,
     context,
@@ -166,6 +171,7 @@ export class CosmosDBError extends Error {
  * ```
  */
 export class InvalidConnectionStringError extends CosmosDBError {
+  /** Create a new InvalidConnectionStringError */
   constructor(message: string, context: CosmosDBErrorContext) {
     super({
       message,
@@ -187,6 +193,7 @@ export class InvalidConnectionStringError extends CosmosDBError {
  * ```
  */
 export class MissingCredentialError extends CosmosDBError {
+  /** Create a new MissingCredentialError */
   constructor(message: string, context: CosmosDBErrorContext) {
     super({
       message,
@@ -207,6 +214,7 @@ export class MissingCredentialError extends CosmosDBError {
  * ```
  */
 export class ConflictingAuthMethodsError extends CosmosDBError {
+  /** Create a new ConflictingAuthMethodsError */
   constructor(message: string, context: CosmosDBErrorContext) {
     super({
       message,
@@ -227,6 +235,7 @@ export class ConflictingAuthMethodsError extends CosmosDBError {
  * ```
  */
 export class MissingAuthMethodError extends CosmosDBError {
+  /** Create a new MissingAuthMethodError */
   constructor(message: string, context: CosmosDBErrorContext) {
     super({
       message,
@@ -249,6 +258,7 @@ export class MissingAuthMethodError extends CosmosDBError {
  * ```
  */
 export class ConfigurationError extends CosmosDBError {
+  /** Create a new ConfigurationError */
   constructor(message: string, context: CosmosDBErrorContext) {
     super({
       message,
@@ -277,9 +287,12 @@ export class ConfigurationError extends CosmosDBError {
  * ```
  */
 export class ConfigValidationError extends CosmosDBError {
+  /** Configuration field that failed validation */
   public readonly field?: string
+  /** CRUD operation name related to the failure */
   public readonly operation?: string
 
+  /** Create a new ConfigValidationError */
   constructor({
     message,
     context,
@@ -302,6 +315,7 @@ export class ConfigValidationError extends CosmosDBError {
     this.operation = operation
   }
 
+  /** Serialize error to JSON with field and operation */
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
@@ -323,6 +337,7 @@ export class ConfigValidationError extends CosmosDBError {
  * ```
  */
 export class QueryFailedError extends CosmosDBError {
+  /** Create a new QueryFailedError */
   constructor(message: string, context: CosmosDBErrorContext) {
     super({
       message,
@@ -346,6 +361,7 @@ export class QueryFailedError extends CosmosDBError {
  * ```
  */
 export class ValidationError extends CosmosDBError {
+  /** Create a new ValidationError */
   constructor(message: string, context: CosmosDBErrorContext) {
     super({
       message,
@@ -366,6 +382,7 @@ export class ValidationError extends CosmosDBError {
  * ```
  */
 export class InvalidFieldNameError extends CosmosDBError {
+  /** Create a new InvalidFieldNameError */
   constructor(message: string, context: CosmosDBErrorContext) {
     super({
       message,
@@ -393,8 +410,10 @@ export class InvalidFieldNameError extends CosmosDBError {
  * ```
  */
 export class ConditionalCheckFailedError extends CosmosDBError {
+  /** Additional metadata extracted from the CosmosDB response */
   public readonly metadata: CosmosDBErrorMetadata
 
+  /** Create a new ConditionalCheckFailedError */
   constructor({
     message,
     context,
@@ -414,6 +433,7 @@ export class ConditionalCheckFailedError extends CosmosDBError {
     this.metadata = metadata
   }
 
+  /** Serialize error to JSON with metadata */
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
@@ -439,9 +459,12 @@ export class ConditionalCheckFailedError extends CosmosDBError {
  * ```
  */
 export class InvalidFilterError extends CosmosDBError {
+  /** Field referenced by the invalid filter */
   public readonly field?: string
+  /** Operator that caused the filter to be rejected */
   public readonly operator?: string
 
+  /** Create a new InvalidFilterError */
   constructor({
     message,
     context,
@@ -464,6 +487,7 @@ export class InvalidFilterError extends CosmosDBError {
     this.operator = operator
   }
 
+  /** Serialize error to JSON with field and operator */
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
@@ -499,11 +523,16 @@ export class InvalidFilterError extends CosmosDBError {
  * ```
  */
 export class ETagMismatchError extends CosmosDBError {
+  /** ETag supplied by the client */
   public readonly providedEtag: string
+  /** ETag currently stored in the database */
   public readonly currentEtag: string
+  /** ID of the conflicting document, when known */
   public readonly documentId?: string
+  /** Current document state from the database, when available */
   public readonly currentDocument?: Record<string, unknown>
 
+  /** Create a new ETagMismatchError */
   constructor({
     message,
     context,
@@ -532,6 +561,7 @@ export class ETagMismatchError extends CosmosDBError {
     this.currentDocument = currentDocument
   }
 
+  /** Serialize error to JSON with ETag conflict details */
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
@@ -559,8 +589,10 @@ export class ETagMismatchError extends CosmosDBError {
  * ```
  */
 export class RateLimitError extends CosmosDBError {
+  /** Additional metadata extracted from the CosmosDB response */
   public readonly metadata: CosmosDBErrorMetadata
 
+  /** Create a new RateLimitError */
   constructor({
     message,
     context,
@@ -606,8 +638,10 @@ export class RateLimitError extends CosmosDBError {
  * ```
  */
 export class ServiceUnavailableError extends CosmosDBError {
+  /** Additional metadata extracted from the CosmosDB response */
   public readonly metadata: CosmosDBErrorMetadata
 
+  /** Create a new ServiceUnavailableError */
   constructor({
     message,
     context,
@@ -653,8 +687,10 @@ export class ServiceUnavailableError extends CosmosDBError {
  * ```
  */
 export class RequestTimeoutError extends CosmosDBError {
+  /** Additional metadata extracted from the CosmosDB response */
   public readonly metadata: CosmosDBErrorMetadata
 
+  /** Create a new RequestTimeoutError */
   constructor({
     message,
     context,
@@ -700,8 +736,10 @@ export class RequestTimeoutError extends CosmosDBError {
  * ```
  */
 export class BadRequestError extends CosmosDBError {
+  /** Additional metadata extracted from the CosmosDB response */
   public readonly metadata: CosmosDBErrorMetadata
 
+  /** Create a new BadRequestError */
   constructor({
     message,
     context,
@@ -721,6 +759,7 @@ export class BadRequestError extends CosmosDBError {
     this.metadata = metadata
   }
 
+  /** Serialize error to JSON with metadata */
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
@@ -744,8 +783,10 @@ export class BadRequestError extends CosmosDBError {
  * ```
  */
 export class UnauthorizedError extends CosmosDBError {
+  /** Additional metadata extracted from the CosmosDB response */
   public readonly metadata: CosmosDBErrorMetadata
 
+  /** Create a new UnauthorizedError */
   constructor({
     message,
     context,
@@ -765,6 +806,7 @@ export class UnauthorizedError extends CosmosDBError {
     this.metadata = metadata
   }
 
+  /** Serialize error to JSON with metadata */
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
@@ -788,8 +830,10 @@ export class UnauthorizedError extends CosmosDBError {
  * ```
  */
 export class ForbiddenError extends CosmosDBError {
+  /** Additional metadata extracted from the CosmosDB response */
   public readonly metadata: CosmosDBErrorMetadata
 
+  /** Create a new ForbiddenError */
   constructor({
     message,
     context,
@@ -809,6 +853,7 @@ export class ForbiddenError extends CosmosDBError {
     this.metadata = metadata
   }
 
+  /** Serialize error to JSON with metadata */
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
@@ -832,8 +877,10 @@ export class ForbiddenError extends CosmosDBError {
  * ```
  */
 export class NotFoundError extends CosmosDBError {
+  /** Additional metadata extracted from the CosmosDB response */
   public readonly metadata: CosmosDBErrorMetadata
 
+  /** Create a new NotFoundError */
   constructor({
     message,
     context,
@@ -853,6 +900,7 @@ export class NotFoundError extends CosmosDBError {
     this.metadata = metadata
   }
 
+  /** Serialize error to JSON with metadata */
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
@@ -876,8 +924,10 @@ export class NotFoundError extends CosmosDBError {
  * ```
  */
 export class ConflictError extends CosmosDBError {
+  /** Additional metadata extracted from the CosmosDB response */
   public readonly metadata: CosmosDBErrorMetadata
 
+  /** Create a new ConflictError */
   constructor({
     message,
     context,
@@ -897,6 +947,7 @@ export class ConflictError extends CosmosDBError {
     this.metadata = metadata
   }
 
+  /** Serialize error to JSON with metadata */
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
@@ -921,8 +972,10 @@ export class ConflictError extends CosmosDBError {
  * ```
  */
 export class InternalServerError extends CosmosDBError {
+  /** Additional metadata extracted from the CosmosDB response */
   public readonly metadata: CosmosDBErrorMetadata
 
+  /** Create a new InternalServerError */
   constructor({
     message,
     context,
@@ -942,6 +995,7 @@ export class InternalServerError extends CosmosDBError {
     this.metadata = metadata
   }
 
+  /** Serialize error to JSON with metadata */
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
@@ -966,8 +1020,10 @@ export class InternalServerError extends CosmosDBError {
  * ```
  */
 export class BadGatewayError extends CosmosDBError {
+  /** Additional metadata extracted from the CosmosDB response */
   public readonly metadata: CosmosDBErrorMetadata
 
+  /** Create a new BadGatewayError */
   constructor({
     message,
     context,
@@ -987,6 +1043,7 @@ export class BadGatewayError extends CosmosDBError {
     this.metadata = metadata
   }
 
+  /** Serialize error to JSON with metadata */
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
@@ -1011,8 +1068,10 @@ export class BadGatewayError extends CosmosDBError {
  * ```
  */
 export class GatewayTimeoutError extends CosmosDBError {
+  /** Additional metadata extracted from the CosmosDB response */
   public readonly metadata: CosmosDBErrorMetadata
 
+  /** Create a new GatewayTimeoutError */
   constructor({
     message,
     context,
@@ -1032,6 +1091,7 @@ export class GatewayTimeoutError extends CosmosDBError {
     this.metadata = metadata
   }
 
+  /** Serialize error to JSON with metadata */
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
@@ -1082,6 +1142,7 @@ export function createErrorContext({
 export class ErrorBoundary {
   private readonly component: string
 
+  /** Create a new ErrorBoundary scoped to the given component */
   constructor(component: string) {
     this.component = component
   }

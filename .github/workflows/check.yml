@@ -12,7 +12,15 @@ jobs:
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted", "aur0"]') }}
     strategy:
       matrix:
-        deno-version: [v2.x]
+        # Exact pin: `deno doc --lint` chases type references into npm
+        # dependencies on 2.8+ AND on 2.7 patches after 2.7.4 (2.7.14
+        # confirmed affected) — a public API that exposes @azure/cosmos
+        # types (Container, CosmosClient) cannot satisfy private-type-ref;
+        # re-exporting them just cascades into the SDK's own internals.
+        # 2.7.4 is the newest release where the gate is satisfiable.
+        # Re-evaluate when the rule learns to treat external packages as
+        # documented elsewhere.
+        deno-version: ['2.7.4']
     steps:
       - uses: actions/checkout@v4
       - name: Setup Deno
